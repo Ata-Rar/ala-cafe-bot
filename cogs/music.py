@@ -60,21 +60,46 @@ class MusicPlayerView(discord.ui.View):
         else:
             await interaction.response.send_message("❌ Atlanacak şarkı yok.", ephemeral=True)
 
-    @discord.ui.button(label="Ses -%10", style=discord.ButtonStyle.secondary, emoji="🔉", custom_id="m_vol_down")
+    
+    @discord.ui.button(label="Döngü", style=discord.ButtonStyle.secondary, emoji="🔁", custom_id="m_loop", row=0)
+    async def btn_loop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        cur = self.cog.loops.get(self.guild_id, False)
+        new_state = not cur
+        self.cog.loops[self.guild_id] = new_state
+        if new_state:
+            button.style = discord.ButtonStyle.success
+            await interaction.response.send_message("🔁 **Döngü Modu AÇIK:** Çalan şarkı bittikçe tekrar edecek!", ephemeral=True)
+        else:
+            button.style = discord.ButtonStyle.secondary
+            await interaction.response.send_message("➡️ **Döngü Modu KAPALI:** Sıradaki şarkılara normal devam edilecek.", ephemeral=True)
+
+    @discord.ui.button(label="Oto-Öneri", style=discord.ButtonStyle.secondary, emoji="📻", custom_id="m_autoplay", row=0)
+    async def btn_autoplay(self, interaction: discord.Interaction, button: discord.ui.Button):
+        cur = self.cog.autoplay.get(self.guild_id, True)
+        new_state = not cur
+        self.cog.autoplay[self.guild_id] = new_state
+        if new_state:
+            button.style = discord.ButtonStyle.success
+            await interaction.response.send_message("📻 **Otomatik Oynatma AÇIK:** Kuyruk bittiğinde benzer müzikler otomatik çalmaya devam edecek!", ephemeral=True)
+        else:
+            button.style = discord.ButtonStyle.secondary
+            await interaction.response.send_message("⏹️ **Otomatik Oynatma KAPALI:** Kuyruktaki şarkılar bitince bot beklemede kalacak.", ephemeral=True)
+
+    @discord.ui.button(label="Ses -%10", row=1, style=discord.ButtonStyle.secondary, emoji="🔉", custom_id="m_vol_down")
     async def btn_vol_down(self, interaction: discord.Interaction, button: discord.ui.Button):
         cur_vol = self.cog.get_volume(self.guild_id)
         new_vol = max(10, cur_vol - 10)
         self.cog.set_volume(self.guild_id, new_vol)
         await interaction.response.send_message(f"🔉 Ses seviyesi: **%{new_vol}**", ephemeral=True)
 
-    @discord.ui.button(label="Ses +%10", style=discord.ButtonStyle.secondary, emoji="🔊", custom_id="m_vol_up")
+    @discord.ui.button(label="Ses +%10", row=1, style=discord.ButtonStyle.secondary, emoji="🔊", custom_id="m_vol_up")
     async def btn_vol_up(self, interaction: discord.Interaction, button: discord.ui.Button):
         cur_vol = self.cog.get_volume(self.guild_id)
         new_vol = min(150, cur_vol + 10)
         self.cog.set_volume(self.guild_id, new_vol)
         await interaction.response.send_message(f"🔊 Ses seviyesi: **%{new_vol}**", ephemeral=True)
 
-    @discord.ui.button(label="Kuyruk", style=discord.ButtonStyle.secondary, emoji="📜", custom_id="m_queue")
+    @discord.ui.button(label="Kuyruk", row=1, style=discord.ButtonStyle.secondary, emoji="📜", custom_id="m_queue")
     async def btn_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
         q = self.cog.get_queue(self.guild_id)
         if not q:
@@ -84,7 +109,7 @@ class MusicPlayerView(discord.ui.View):
         embed = discord.Embed(title="📜 Müzik Çalma Sırası", description="\n".join(lines), color=COLOR_INFO)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="Durdur & Çık", style=discord.ButtonStyle.danger, emoji="⏹️", custom_id="m_stop")
+    @discord.ui.button(label="Durdur & Çık", row=1, style=discord.ButtonStyle.danger, emoji="⏹️", custom_id="m_stop")
     async def btn_stop(self, interaction: discord.Interaction, button: discord.ui.Button):
         vc = interaction.guild.voice_client
         if vc:
@@ -105,6 +130,8 @@ class MusicCog(commands.Cog, name="Müzik"):
         self.now_playing = {}        # guild_id -> current track dict
         self.idle_tasks = {}         # guild_id -> asyncio.Task (5 dk boş oda sayacı)
         self.last_text_channels = {} # guild_id -> discord.TextChannel
+        self.loops = {}              # guild_id -> bool (şarkı tekrarı)
+        self.autoplay = {}           # guild_id -> bool (otomatik benzer şarkı çalma)
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
@@ -246,6 +273,63 @@ class MusicCog(commands.Cog, name="Müzik"):
             print("Müzik arama hatası:", e)
             return None
 
+    async def _fetch_and_queue_autoplay(self, guild_id: int, channel: discord.TextChannel, last_track: dict):
+        try:
+            uploader = last_track.get("uploader", "")
+            title = last_track.get("title", "")
+            clean_title = title.split("(")[0].split("[")[0].strip()
+            if uploader and uploader != "Bilinmeyen Sanatçı":
+                search_q = f"ytsearch5:{uploader} {clean_title} mix"
+            else:
+                search_q = f"ytsearch5:{clean_title} benzeri şarkılar"
+
+            def _get_candidate():
+                with yt_dlp.YoutubeDL(YTDL_OPTS) as ydl:
+                    data = ydl.extract_info(search_q, download=False)
+                    if data and "entries" in data and data["entries"]:
+                        for e in data["entries"]:
+                            if e and e.get("title") != last_track.get("title"):
+                                return e
+                        return data["entries"][0]
+                    return None
+
+            candidate = await asyncio.to_thread(_get_candidate)
+            if candidate:
+                raw_dur = candidate.get("duration", 0)
+                try:
+                    dur = int(float(raw_dur)) if raw_dur else 0
+                except Exception:
+                    dur = 0
+                mins, secs = divmod(dur, 60)
+                dur_str = f"{mins}:{secs:02d}" if dur else "Canlı / Bilinmiyor"
+
+                stream_url = candidate.get("url")
+                if not stream_url and "formats" in candidate:
+                    audio_formats = [f for f in candidate["formats"] if f.get("acodec") != "none"]
+                    stream_url = audio_formats[-1]["url"] if audio_formats else candidate["formats"][-1]["url"]
+
+                next_track = {
+                    "title": candidate.get("title", "Önerilen Şarkı"),
+                    "url": stream_url,
+                    "webpage_url": candidate.get("webpage_url", ""),
+                    "duration_str": dur_str,
+                    "thumbnail": candidate.get("thumbnail"),
+                    "uploader": candidate.get("uploader", "Bilinmeyen Sanatçı"),
+                    "is_autoplay": True
+                }
+                q = self.get_queue(guild_id)
+                q.append(next_track)
+                try:
+                    await channel.send(f"📻 **Otomatik Öneri:** Sırada şarkı kalmadığı için benzer bir parça başlatılıyor: **{next_track['title']}**")
+                except Exception:
+                    pass
+                self.play_next(guild_id, channel)
+            else:
+                self.now_playing[guild_id] = None
+        except Exception as e:
+            print("Autoplay hatası:", e)
+            self.now_playing[guild_id] = None
+
     def play_next(self, guild_id: int, channel: discord.TextChannel):
         q = self.get_queue(guild_id)
         guild = self.bot.get_guild(guild_id)
@@ -258,9 +342,21 @@ class MusicCog(commands.Cog, name="Müzik"):
         if vc.is_playing():
             return
 
+        is_loop = self.loops.get(guild_id, False)
+        is_autoplay = self.autoplay.get(guild_id, True)
+        last_track = self.now_playing.get(guild_id)
+
+        # 1. Kuyruk boşsa ve döngü açıksa aynı şarkıyı çal
+        if not q and is_loop and last_track:
+            q.append(last_track)
+
+        # 2. Kuyruk boşsa, döngü kapalıysa ve otomatik oynatma açıksa benzer şarkı çek
+        if not q and not is_loop and is_autoplay and last_track:
+            asyncio.run_coroutine_threadsafe(self._fetch_and_queue_autoplay(guild_id, channel, last_track), self.bot.loop)
+            return
+
         if not q:
             self.now_playing[guild_id] = None
-            # Otomatik öneri veya sessiz bekleme
             return
 
         track = q.pop(0)
@@ -274,6 +370,10 @@ class MusicCog(commands.Cog, name="Müzik"):
             def after_finish(err):
                 if err:
                     print("Oynatma hatası:", err)
+                if self.loops.get(guild_id, False):
+                    # Döngü açıksa bu şarkıyı tekrar kuyruğun en başına koy
+                    q_cur = self.get_queue(guild_id)
+                    q_cur.insert(0, track)
                 self.bot.loop.call_soon_threadsafe(self.play_next, guild_id, channel)
 
             vc.play(vol_source, after=after_finish)
@@ -453,6 +553,35 @@ class MusicCog(commands.Cog, name="Müzik"):
         await interaction.response.defer(thinking=True)
         q = queries.get(istasyon.value, queries["lofi"])
         await self.handle_play(interaction.channel, interaction.user, q, interaction.followup.send)
+
+
+    @app_commands.command(name="dongu", description="Çalan şarkıyı sürekli tekrarlama modunu (Loop) açar veya kapatır")
+    @app_commands.describe(durum="Döngü durumu")
+    @app_commands.choices(durum=[
+        app_commands.Choice(name="🔁 Açık (Çalan şarkıyı sürekli tekrarla)", value="ac"),
+        app_commands.Choice(name="➡️ Kapalı (Sıradaki şarkılara devam et)", value="kapat")
+    ])
+    async def cmd_loop(self, interaction: discord.Interaction, durum: app_commands.Choice[str]):
+        is_on = (durum.value == "ac")
+        self.loops[interaction.guild_id] = is_on
+        if is_on:
+            await interaction.response.send_message("🔁 **Döngü Modu AÇILDI!** Çalan şarkı bittikçe durmadan tekrar çalacak.")
+        else:
+            await interaction.response.send_message("➡️ **Döngü Modu KAPATILDI.** Sıradaki şarkılara normal şekilde devam edilecek.")
+
+    @app_commands.command(name="otomatik-oynat", description="Kuyruk bitince benzer şarkıları otomatik başlatma modunu ayarlar")
+    @app_commands.describe(durum="Otomatik oynatma modu")
+    @app_commands.choices(durum=[
+        app_commands.Choice(name="📻 Açık (Kuyruk bitince benzer şarkılar çalsın)", value="ac"),
+        app_commands.Choice(name="⏹️ Kapalı (Kuyruk bitince sessiz kalsın)", value="kapat")
+    ])
+    async def cmd_autoplay(self, interaction: discord.Interaction, durum: app_commands.Choice[str]):
+        is_on = (durum.value == "ac")
+        self.autoplay[interaction.guild_id] = is_on
+        if is_on:
+            await interaction.response.send_message("📻 **Otomatik Oynatma (Autoplay) AÇILDI!** Kuyruk bittiğinde radyo gibi benzer şarkılar çalmaya devam edecek.")
+        else:
+            await interaction.response.send_message("⏹️ **Otomatik Oynatma KAPATILDI.** Kuyruk bittiğinde müzik duracak.")
 
 async def setup(bot):
     await bot.add_cog(MusicCog(bot))
