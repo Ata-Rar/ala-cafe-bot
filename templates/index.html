@@ -65,6 +65,12 @@
             </div>
         </div>
 
+        
+            <button onclick="doLogout()" title="Güvenli Çıkış" class="flex items-center gap-1.5 px-3 py-1.5 bg-dark-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 border border-dark-border rounded-xl text-xs font-semibold transition">
+                <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                <span>Çıkış</span>
+            </button>
+
         <!-- Canlı Durum ve Güç Butonları -->
         <div class="flex items-center gap-3">
             <div id="statusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-800">
@@ -750,10 +756,77 @@
             } catch(e) { console.error(e); }
         }
 
-        // İlk Başlatma
-        fetchStatus();
-        loadCustomizations();
+        
+        // Güvenlik & Şifre Doğrulama
+        async function checkAuth() {
+            try {
+                const res = await fetch('/api/auth/check');
+                const data = await res.json();
+                if (data.authenticated) {
+                    document.getElementById('loginOverlay').classList.add('hidden');
+                    fetchStatus();
+                    loadCustomizations();
+                } else {
+                    document.getElementById('loginOverlay').classList.remove('hidden');
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        async function doLogin() {
+            const pwd = document.getElementById('loginPassword').value;
+            const err = document.getElementById('loginError');
+            err.classList.add('hidden');
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({password: pwd})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('loginOverlay').classList.add('hidden');
+                    fetchStatus();
+                    loadCustomizations();
+                } else {
+                    err.innerText = data.error || "Hatalı şifre!";
+                    err.classList.remove('hidden');
+                }
+            } catch(e) { err.innerText = "Bağlantı hatası!"; err.classList.remove('hidden'); }
+        }
+
+        async function doLogout() {
+            await fetch('/api/auth/logout', {method: 'POST'});
+            location.reload();
+        }
+
+        // Başlangıç kontrolü
+        checkAuth();
+
         setInterval(fetchStatus, 3000);
     </script>
+
+    <!-- ŞİFRE GİRİŞ EKRANI (GÜVENLİK KAPISI) -->
+    <div id="loginOverlay" class="fixed inset-0 z-[100] bg-dark-900/95 backdrop-blur-2xl flex items-center justify-center p-4">
+        <div class="glass max-w-md w-full p-8 rounded-3xl border border-dark-border text-center space-y-6 shadow-2xl shadow-black">
+            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-600 to-ala-gold flex items-center justify-center text-3xl mx-auto shadow-lg shadow-amber-500/20">
+                ☕
+            </div>
+            <div>
+                <h2 class="text-xl font-bold text-white">Ala Cafe & Lounge</h2>
+                <p class="text-xs text-slate-400 mt-1">Bu panel yalnızca yetkili sunucu sahibine özeldir. Lütfen yönetici şifrenizi girin.</p>
+            </div>
+            <div class="space-y-2 text-left">
+                <input type="password" id="loginPassword" onkeydown="if(event.key==='Enter') doLogin()" placeholder="Yönetici Şifreniz..." class="w-full px-4 py-3 rounded-xl bg-dark-900 border border-dark-border text-white text-sm focus:outline-none focus:border-ala-gold transition font-mono">
+                <div id="loginError" class="text-xs text-rose-400 hidden font-medium">Hatalı şifre!</div>
+            </div>
+            <button onclick="doLogin()" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-ala-gold text-dark-900 font-bold text-sm shadow-lg shadow-amber-500/20 hover:opacity-95 transition flex items-center justify-center gap-2">
+                <i data-lucide="lock" class="w-4 h-4"></i> Giriş Yap
+            </button>
+            <div class="text-[11px] text-slate-500">
+                Varsayılan Güvenlik Şifresi: <code class="text-ala-gold font-mono">ala2026</code>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

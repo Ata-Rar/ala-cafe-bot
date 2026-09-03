@@ -13,9 +13,20 @@ import json
 import sqlite3
 import subprocess
 import psutil
-from flask import Flask, render_template, request, jsonify, send_file
+from functools import wraps
+from flask import Flask, render_template, request, jsonify, send_file, session
 
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "ala_cafe_super_secret_session_key_2026")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "ala2026")
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("authenticated"):
+            return jsonify({"success": False, "error": "Yetkisiz erişim! Lütfen giriş yapın."}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(BASE_DIR, "data", "bot.log")
@@ -36,6 +47,25 @@ def get_bot_process():
 def is_bot_running():
     return get_bot_process() is not None
 
+# --- Kimlik Doğrulama & Güvenlik Kapısı ---
+@app.route("/api/auth/check")
+def api_auth_check():
+    return jsonify({"authenticated": bool(session.get("authenticated"))})
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_auth_login():
+    data = request.json or {}
+    password = data.get("password", "")
+    if password == ADMIN_PASSWORD:
+        session["authenticated"] = True
+        return jsonify({"success": True, "message": "Giriş başarılı!"})
+    return jsonify({"success": False, "error": "Hatalı şifre!"}), 401
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_auth_logout():
+    session.pop("authenticated", None)
+    return jsonify({"success": True, "message": "Çıkış yapıldı."})
+
 # --- Sayfa Yönlendirmesi ---
 @app.route("/")
 def index():
@@ -43,6 +73,7 @@ def index():
 
 # --- API: Bot Durumu ve Sistem ---
 @app.route("/api/status")
+@login_required
 def api_status():
     p = get_bot_process()
     running = p is not None
@@ -62,6 +93,7 @@ def api_status():
 
 # --- API: Bot Başlat / Durdur / Yeniden Başlat ---
 @app.route("/api/bot/<action>", methods=["POST"])
+@login_required
 def api_bot_action(action):
     try:
         if action == "start":
@@ -108,6 +140,7 @@ def api_bot_action(action):
 
 # --- API: Özelleştirme & Karşılama Stüdyosu ---
 @app.route("/api/customizations", methods=["GET", "POST"])
+@login_required
 def api_customizations():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -168,6 +201,7 @@ def api_customizations():
 
 # --- API: VIP & Yönetim Kadrosu ---
 @app.route("/api/vips", methods=["GET", "POST"])
+@login_required
 def api_vips():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -202,6 +236,7 @@ def api_vips():
         return jsonify({"success": True, "message": "VIP üye kaydedildi!"})
 
 @app.route("/api/vips/<int:user_id>", methods=["DELETE"])
+@login_required
 def api_delete_vip(user_id):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -212,6 +247,7 @@ def api_delete_vip(user_id):
 
 # --- API: Chat Dökümleri ---
 @app.route("/api/transcripts")
+@login_required
 def api_transcripts():
     files = []
     if os.path.exists(TRANSCRIPTS_DIR):
@@ -227,8 +263,8 @@ def api_transcripts():
     return jsonify(files)
 
 @app.route("/api/transcripts/<filename>")
+@login_required
 def api_transcript_view(filename):
-    # Path traversal koruması
     safe_name = os.path.basename(filename)
     path = os.path.join(TRANSCRIPTS_DIR, safe_name)
     if not os.path.exists(path):
@@ -243,20 +279,21 @@ def api_transcript_view(filename):
 
 # --- API: Canlı Konsol Logları ---
 @app.route("/api/logs")
+@login_required
 def api_logs():
     lines = []
     if os.path.exists(LOG_FILE):
         try:
             with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
                 all_lines = f.readlines()
-                lines = all_lines[-100:]  # Son 100 satır
+                lines = all_lines[-100:]
         except Exception:
             pass
     return jsonify({"logs": lines})
 
 if __name__ == "__main__":
     print("=======================================================")
-    print("  🌐 Ala Cafe Web Dashboard v4.0 Başlatıldı!")
-    print("  👉 Tarayıcında Aç: http://localhost:5050")
+    print("  🌐 Ala Cafe Güvenli Web Dashboard Başlatıldı!")
+    print("  👉 Varsayılan Şifre: ala2026 (Render ADMIN_PASSWORD)")
     print("=======================================================")
     app.run(host="127.0.0.1", port=5050, debug=False)
