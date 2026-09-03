@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import asyncio
+import random
 import re
 import urllib.request
 import json
@@ -62,6 +63,27 @@ class MusicPlayerView(discord.ui.View):
         else:
             await interaction.response.send_message("❌ Atlanacak şarkı yok.", ephemeral=True)
 
+    @discord.ui.button(label="Karıştır", style=discord.ButtonStyle.secondary, emoji="🔀", custom_id="m_shuffle", row=0)
+    async def btn_shuffle(self, interaction: discord.Interaction, button: discord.ui.Button):
+        cur = self.cog.shuffle_mode.get(self.guild_id, False)
+        new_state = not cur
+        self.cog.shuffle_mode[self.guild_id] = new_state
+        if new_state:
+            button.style = discord.ButtonStyle.success
+            q = self.cog.get_queue(self.guild_id)
+            if len(q) > 1:
+                random.shuffle(q)
+            await interaction.response.send_message(
+                "🔀 **Karıştırma Modu (Shuffle) AÇIK!**\n"
+                "• Şarkılar rastgele karıştırıldı.\n"
+                "• Açılan hiçbir şarkı liste bitene kadar tekrar çalmayacak.\n"
+                "• Liste bittiğinde tüm parçalar yeniden karıştırılıp başa saracak! 🎵",
+                ephemeral=True
+            )
+        else:
+            button.style = discord.ButtonStyle.secondary
+            await interaction.response.send_message("➡️ **Karıştırma Modu KAPALI:** Sıradaki şarkılara normal sırayla devam edilecek.", ephemeral=True)
+
     @discord.ui.button(label="Döngü", style=discord.ButtonStyle.secondary, emoji="🔁", custom_id="m_loop", row=0)
     async def btn_loop(self, interaction: discord.Interaction, button: discord.ui.Button):
         cur = self.cog.loops.get(self.guild_id, False)
@@ -114,6 +136,9 @@ class MusicCog(commands.Cog, name="Müzik"):
         self.loops = {}
         self.autoplay = {}
         self.is_stopped = {}
+        self.shuffle_mode = {}
+        self.original_playlists = {}
+        self.played_in_playlist = {}
         self.last_text_channels = {}
         self.idle_tasks = {}
 
@@ -125,12 +150,14 @@ class MusicCog(commands.Cog, name="Müzik"):
     def clear_queue(self, guild_id: int):
         self.queues[guild_id] = []
         self.now_playing[guild_id] = None
+        self.original_playlists[guild_id] = None
+        self.played_in_playlist[guild_id] = set()
 
     def stop_and_clear(self, guild_id: int):
-        """Müziği tamamen durdurur, kuyruğu sıfırlar ve autoplay döngüsünü keser."""
+        """Müziği tamamen durdurur, kuyruğu sıfırlar, karıştırma ve autoplay döngüsünü keser."""
         self.is_stopped[guild_id] = True
+        self.shuffle_mode[guild_id] = False
         self.clear_queue(guild_id)
-        self.now_playing[guild_id] = None
         guild = self.bot.get_guild(guild_id)
         if guild and guild.voice_client:
             vc = guild.voice_client
@@ -393,11 +420,38 @@ class MusicCog(commands.Cog, name="Müzik"):
 
         is_loop = self.loops.get(guild_id, False)
         is_autoplay = self.autoplay.get(guild_id, True)
+        is_shuffle = self.shuffle_mode.get(guild_id, False)
         last_track = self.now_playing.get(guild_id)
 
+        # 1. Tek şarkı döngüsü
         if not q and is_loop and last_track:
             q.append(last_track)
 
+        # 2. Akıllı Playlist Döngüsü & Karıştırma Başa Sarma (Re-shuffle Cycle)
+        # Playlistteki tüm parçalar birer kez çalındığında, liste baştan yepyeni rastgele sırayla karıştırılır
+        orig_pl = self.original_playlists.get(guild_id)
+        if not q and orig_pl and orig_pl.get("tracks") and (is_shuffle or is_loop):
+            tracks_copy = list(orig_pl["tracks"])
+            if is_shuffle:
+                random.shuffle(tracks_copy)
+            for t_name in tracks_copy:
+                q.append({
+                    "title": f"🟢 {t_name}",
+                    "query": t_name,
+                    "is_spotify_lazy": True,
+                    "is_spotify": True
+                })
+            self.played_in_playlist[guild_id] = set()
+            try:
+                loop_icon = "🔀" if is_shuffle else "🔁"
+                asyncio.run_coroutine_threadsafe(
+                    channel.send(f"{loop_icon} **Çalma Listesi Başa Sardı:** `{orig_pl['title']}` listesindeki tüm şarkılar birer kez çalındı! Liste baştan yeniden karıştırılarak akmaya devam ediyor! 🎵"),
+                    self.bot.loop
+                )
+            except Exception:
+                pass
+
+        # 3. Kuyruk boşsa ve autoplay açıksa benzer şarkı çek
         if not q and not is_loop and is_autoplay and last_track:
             asyncio.run_coroutine_threadsafe(self._fetch_and_queue_autoplay(guild_id, channel, last_track), self.bot.loop)
             return
@@ -442,7 +496,7 @@ class MusicCog(commands.Cog, name="Müzik"):
         return voice_channel, vc
 
     # --- SPOTIFY ÇALMA LİSTESİ TOPLU KUYRUĞA EKLEME ---
-    async def handle_spotify_import(self, channel, user, spot_data: dict, send_func, target_vc: discord.VoiceChannel = None, sirayi_sifirla: bool = False):
+    async def handle_spotify_import(self, channel, user, spot_data: dict, send_func, target_vc: discord.VoiceChannel = None, sirayi_sifirla: bool = False, karistir: bool = False):
         guild = channel.guild
         self.last_text_channels[guild.id] = channel
 
@@ -471,7 +525,22 @@ class MusicCog(commands.Cog, name="Müzik"):
             return
 
         title = spot_data.get("title", "Spotify Çalma Listesi")
-        first_track_name = tracks[0]
+        
+        # Orijinal playlisti hafızada tut (bitince tekrar karıştırıp başa sarabilmek için)
+        self.original_playlists[guild.id] = {
+            "title": title,
+            "tracks": list(tracks)
+        }
+        self.played_in_playlist[guild.id] = set()
+
+        if karistir:
+            self.shuffle_mode[guild.id] = True
+            tracks_to_queue = list(tracks)
+            random.shuffle(tracks_to_queue)
+        else:
+            tracks_to_queue = list(tracks)
+
+        first_track_name = tracks_to_queue[0]
         q = self.get_queue(guild.id)
 
         is_already_playing = (vc.is_playing() or vc.is_paused()) and not sirayi_sifirla
@@ -485,7 +554,7 @@ class MusicCog(commands.Cog, name="Müzik"):
                 self.play_next(guild.id, channel)
             
             # Kalan tüm parçaları lazy olarak kuyruğa diz
-            for t_name in tracks[1:]:
+            for t_name in tracks_to_queue[1:]:
                 q.append({
                     "title": f"🟢 {t_name}",
                     "query": t_name,
@@ -493,12 +562,16 @@ class MusicCog(commands.Cog, name="Müzik"):
                     "is_spotify": True
                 })
 
+            card_title = "🔀 🟢 Spotify Çalma Listesi (Karışık) Başlatıldı!" if karistir else "🟢 Spotify Çalma Listesi Başlatıldı!"
+            desc_shuffle_note = "\n🔀 **Karıştırma:** Aktif (Her şarkı 1 kez çalacak, bitince yeniden karıştırılacak)" if karistir else ""
+
             embed = discord.Embed(
-                title="🟢 Spotify Çalma Listesi Başlatıldı!",
+                title=card_title,
                 description=(
                     f"🎧 **Liste Adı:** `{title}`\n"
                     f"📊 **Toplam Parça:** `{len(tracks)} adet şarkı`\n"
-                    f"▶️ **İlk Çalan:** **{first_track_name}**\n\n"
+                    f"▶️ **İlk Çalan:** **{first_track_name}**"
+                    f"{desc_shuffle_note}\n\n"
                     f"Kalan {len(tracks) - 1} şarkı arka arkaya çalmak üzere sıraya alındı! 🎵"
                 ),
                 color=COLOR_SPOTIFY
@@ -509,7 +582,7 @@ class MusicCog(commands.Cog, name="Müzik"):
 
         else:
             # Zaten çalıyorsa tüm listeyi doğrudan kuyruğa ekle
-            for t_name in tracks:
+            for t_name in tracks_to_queue:
                 q.append({
                     "title": f"🟢 {t_name}",
                     "query": t_name,
@@ -517,8 +590,9 @@ class MusicCog(commands.Cog, name="Müzik"):
                     "is_spotify": True
                 })
 
+            card_title = "🔀 🟢 Spotify Çalma Listesi (Karışık) Sıraya Eklendi!" if karistir else "🟢 Spotify Çalma Listesi Sıraya Eklendi!"
             embed = discord.Embed(
-                title="🟢 Spotify Çalma Listesi Sıraya Eklendi!",
+                title=card_title,
                 description=(
                     f"🎧 **Liste Adı:** `{title}`\n"
                     f"📊 **Eklenen Parça:** `{len(tracks)} adet şarkı`\n"
@@ -530,7 +604,7 @@ class MusicCog(commands.Cog, name="Müzik"):
             embed.set_footer(text="Ala Lounge • Spotify Müzik İstasyonu")
             await send_func(embed=embed)
 
-    async def handle_play(self, channel, user, sarki: str, send_func, target_vc: discord.VoiceChannel = None, sirayi_sifirla: bool = False):
+    async def handle_play(self, channel, user, sarki: str, send_func, target_vc: discord.VoiceChannel = None, sirayi_sifirla: bool = False, karistir: bool = False):
         guild = channel.guild
         member = guild.get_member(user.id) or user
         self.last_text_channels[guild.id] = channel
@@ -548,7 +622,7 @@ class MusicCog(commands.Cog, name="Müzik"):
         if "spotify.com" in sarki and ("playlist" in sarki or "album" in sarki):
             spot_data = await asyncio.to_thread(self.parse_spotify_url, sarki)
             if spot_data and spot_data.get("tracks"):
-                await self.handle_spotify_import(channel, user, spot_data, send_func, target_vc, sirayi_sifirla)
+                await self.handle_spotify_import(channel, user, spot_data, send_func, target_vc, sirayi_sifirla, karistir)
                 return
 
         voice_channel, vc = await self._resolve_voice_channel(channel, user, target_vc)
@@ -599,18 +673,26 @@ class MusicCog(commands.Cog, name="Müzik"):
     @app_commands.command(name="spotify", description="Spotify playlist, albüm veya şarkı linkini anında kuyruğa ekler ve çalar")
     @app_commands.describe(
         link_veya_arama="Spotify playlist, albüm veya şarkı linki (veya şarkı adı)",
+        karistir="Çalma listesindeki şarkıları rastgele karıştırarak çal",
         sirayi_sifirla="Eski sırayı ve çalan şarkıyı tamamen temizleyip bu listeyi baştan başlat",
         kanal="İsteğe bağlı: Çalınacak ses kanalı"
     )
-    async def slash_spotify(self, interaction: discord.Interaction, link_veya_arama: str, sirayi_sifirla: bool = False, kanal: discord.VoiceChannel = None):
+    async def slash_spotify(
+        self,
+        interaction: discord.Interaction,
+        link_veya_arama: str,
+        karistir: bool = False,
+        sirayi_sifirla: bool = False,
+        kanal: discord.VoiceChannel = None
+    ):
         await interaction.response.defer(thinking=True)
-        await self.handle_play(interaction.channel, interaction.user, link_veya_arama, interaction.followup.send, kanal, sirayi_sifirla)
+        await self.handle_play(interaction.channel, interaction.user, link_veya_arama, interaction.followup.send, kanal, sirayi_sifirla, karistir)
 
     @commands.command(name="spotify")
     async def prefix_spotify(self, ctx, *, link_veya_arama: str):
         await self.handle_play(ctx.channel, ctx.author, link_veya_arama, ctx.send)
 
-    # ==================== STANDART KOMUTLAR ====================
+    # ==================== STANDART OYNATMA KOMUTLARI ====================
     @commands.command(name="play", aliases=["oynat", "çal", "cal"])
     async def prefix_play(self, ctx, *, sarki: str):
         await self.handle_play(ctx.channel, ctx.author, sarki, ctx.send)
@@ -618,12 +700,63 @@ class MusicCog(commands.Cog, name="Müzik"):
     @app_commands.command(name="oynat", description="SoundCloud, Spotify veya YouTube üzerinden anında şarkı veya çalma listesi çalar")
     @app_commands.describe(
         sarki="Şarkı adı veya link (Spotify Playlist/YouTube/SoundCloud)",
+        karistir="Çalma listesindeki şarkıları rastgele karıştırarak çal",
         sirayi_sifirla="Eski sırayı ve çalan şarkıyı tamamen temizleyip bu şarkıyı/listeyi baştan başlat",
         kanal="İsteğe bağlı: Çalınacak ses kanalı"
     )
-    async def slash_play(self, interaction: discord.Interaction, sarki: str, sirayi_sifirla: bool = False, kanal: discord.VoiceChannel = None):
+    async def slash_play(
+        self,
+        interaction: discord.Interaction,
+        sarki: str,
+        karistir: bool = False,
+        sirayi_sifirla: bool = False,
+        kanal: discord.VoiceChannel = None
+    ):
         await interaction.response.defer(thinking=True)
-        await self.handle_play(interaction.channel, interaction.user, sarki, interaction.followup.send, kanal, sirayi_sifirla)
+        await self.handle_play(interaction.channel, interaction.user, sarki, interaction.followup.send, kanal, sirayi_sifirla, karistir)
+
+    # ==================== KARIŞTIRMA (SHUFFLE) KOMUTLARI ====================
+    @app_commands.command(name="karistir", description="Müzik kuyruğunu rastgele karıştırır veya karışık çalma modunu açar/kapatır")
+    @app_commands.describe(durum="İsteğe bağlı: Karıştırma modunu aç veya kapat (boş bırakırsan kuyruğu anında karıştırır)")
+    @app_commands.choices(durum=[
+        app_commands.Choice(name="🔀 Açık (Şarkıları rastgele karıştır ve döngüde tut)", value="ac"),
+        app_commands.Choice(name="➡️ Kapalı (Şarkıları normal sırayla çal)", value="kapat")
+    ])
+    async def cmd_shuffle(self, interaction: discord.Interaction, durum: app_commands.Choice[str] = None):
+        guild_id = interaction.guild_id
+        q = self.get_queue(guild_id)
+
+        if durum:
+            is_on = (durum.value == "ac")
+            self.shuffle_mode[guild_id] = is_on
+            if is_on:
+                if len(q) > 1:
+                    random.shuffle(q)
+                await interaction.response.send_message(
+                    "🔀 **Karıştırma Modu (Shuffle) AÇILDI!**\n"
+                    "• Çalma sırası rastgele karıştırıldı.\n"
+                    "• Liste bitene kadar hiçbir şarkı tekrarlanmayacak.\n"
+                    "• Liste bittiğinde otomatik yeniden karıştırılıp başa dönecek! 🎵"
+                )
+            else:
+                await interaction.response.send_message("➡️ **Karıştırma Modu KAPATILDI.** Şarkılar normal sırayla çalmaya devam edecek.")
+        else:
+            if not q or len(q) < 2:
+                await interaction.response.send_message("❌ Kuyrukta karıştırılacak yeterli şarkı yok.", ephemeral=True)
+                return
+            random.shuffle(q)
+            self.shuffle_mode[guild_id] = True
+            await interaction.response.send_message(f"🔀 **Kuyruk Rastgele Karıştırıldı!** Bekleyen **{len(q)}** şarkı rastgele sıraya dizildi.")
+
+    @commands.command(name="karistir", aliases=["shuffle"])
+    async def prefix_shuffle(self, ctx):
+        q = self.get_queue(ctx.guild.id)
+        if not q or len(q) < 2:
+            await ctx.send("❌ Kuyrukta karıştırılacak yeterli şarkı yok.")
+            return
+        random.shuffle(q)
+        self.shuffle_mode[ctx.guild.id] = True
+        await ctx.send(f"🔀 **Kuyruk Rastgele Karıştırıldı!** Bekleyen **{len(q)}** şarkı rastgele sıraya dizildi.")
 
     # ==================== TAM DURDURMA & SIFIRLAMA ====================
     @app_commands.command(name="kapat", description="Müziği tamamen kapatır, tüm kuyruğu temizler ve botu sessize alır")
@@ -688,8 +821,11 @@ class MusicCog(commands.Cog, name="Müzik"):
         else:
             desc += "_Sırada başka şarkı yok._"
 
+        is_shuf = self.shuffle_mode.get(interaction.guild_id, False)
+        shuf_badge = " • 🔀 Karışık Mod Aktif" if is_shuf else ""
+
         embed = discord.Embed(title="📜 Müzik Çalma Sırası", description=desc, color=COLOR_SPOTIFY if cur and cur.get("is_spotify") else COLOR_INFO)
-        embed.set_footer(text=f"Toplam {len(q)} şarkı sırada bekliyor | Sırayı temizlemek için: /kapat")
+        embed.set_footer(text=f"Toplam {len(q)} şarkı sırada bekliyor{shuf_badge} | Sırayı temizlemek için: /kapat")
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="ses", description="Müzik ses seviyesini ayarlar (1-150)")
