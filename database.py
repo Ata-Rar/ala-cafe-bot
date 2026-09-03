@@ -298,3 +298,26 @@ def get_all_tickets():
     rows = [dict(r) for r in c.fetchall()]
     conn.close()
     return rows
+
+
+# --- Sunucu Ayarları Metotları ---
+def get_guild_settings(guild_id):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM guild_settings WHERE guild_id = ?", (guild_id,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return dict(row)
+    return {"guild_id": guild_id, "welcome_channel_id": 1112407824539070475, "auto_role_id": None}
+
+def set_guild_setting(guild_id, key, value):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute(f'''
+        INSERT INTO guild_settings (guild_id, {key})
+        VALUES (?, ?)
+        ON CONFLICT(guild_id) DO UPDATE SET {key} = excluded.{key}
+    ''', (guild_id, value))
+    conn.commit()
+    conn.close()
