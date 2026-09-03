@@ -2,18 +2,62 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from config import COLOR_CAFE, COLOR_SUCCESS, COLOR_ERROR
+import database
+import os
+import asyncio
+import time
+from datetime import datetime
+from config import COLOR_CAFE
+
+TRANSCRIPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "transcripts")
+os.makedirs(TRANSCRIPTS_DIR, exist_ok=True)
 
 class TicketCloseView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Talebi Kapat 🔒", style=discord.ButtonStyle.danger, custom_id="close_ticket_btn")
+    @discord.ui.button(label="Talebi Kapat & Arşivle 🔒", style=discord.ButtonStyle.danger, custom_id="close_ticket_btn")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("🔒 Destek kanalı 5 saniye içinde kapatılıyor...", ephemeral=False)
-        import asyncio
+        channel = interaction.channel
+        await interaction.response.send_message("🔒 Destek konuşması metne dökülüyor ve arşivleniyor, kanal 5 saniye sonra kapatılacak...", ephemeral=False)
+
+        # Mesaj geçmişini topla
+        lines = [
+            "=" * 80,
+            f"  ALA CAFE & LOUNGE — DESTEK TALEBİ DÖKÜMÜ",
+            f"  Kanal Adı   : #{channel.name}",
+            f"  Kapatan     : {interaction.user.display_name} ({interaction.user.name})",
+            f"  Tarih       : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "=" * 80 + "\n"
+        ]
+
+        try:
+            async for msg in channel.history(limit=1000, oldest_first=True):
+                t_str = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                lines.append(f"[{t_str}] {msg.author.display_name}: {msg.clean_content}")
+                if msg.attachments:
+                    for att in msg.attachments:
+                        lines.append(f"  [Ek Dosya: {att.filename} -> {att.url}]")
+        except Exception as e:
+            lines.append(f"[Döküm Hatası: {e}]")
+
+        full_transcript = "\n".join(lines)
+
+        # Veritabanına kaydet
+        database.close_ticket_log(channel.id, interaction.user.display_name, full_transcript)
+
+        # Diske .txt dosyası olarak da kaydet
+        safe_name = channel.name.replace(" ", "_")
+        filename = f"ticket_{safe_name}_{int(time.time())}.txt"
+        file_path = os.path.join(TRANSCRIPTS_DIR, filename)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(full_transcript)
+
         await asyncio.sleep(5)
-        await interaction.channel.delete(reason=f"{interaction.user.name} tarafından kapatıldı")
+        try:
+            await channel.delete(reason=f"Destek kapatıldı ve arşivlendi ({interaction.user.display_name})")
+        except Exception:
+            pass
 
 class TicketOpenView(discord.ui.View):
     def __init__(self):
@@ -24,7 +68,6 @@ class TicketOpenView(discord.ui.View):
         guild = interaction.guild
         member = interaction.user
 
-        # Zaten açık talep var mı kontrol et
         existing_name = f"destek-{member.name}".lower().replace(" ", "-")
         existing_ch = discord.utils.get(guild.text_channels, name=existing_name)
         if existing_ch:
@@ -43,11 +86,15 @@ class TicketOpenView(discord.ui.View):
             reason=f"Destek talebi: {member.name}"
         )
 
+        # Veritabanına açık bilet olarak kaydet
+        database.create_ticket_log(channel.id, channel.name, member.id, member.display_name)
+
         embed = discord.Embed(
             title=f"🛎️ Destek Masası — {member.display_name}",
             description=(
                 f"Merhaba {member.mention}! Sunucu yetkililerine veya özel desteğe bildirmek istediğin konuyu buradan yazabilirsin.\n\n"
-                f"🔒 İşiniz bittiğinde aşağıdaki **'Talebi Kapat'** butonuna basarak odayı sonlandırabilirsiniz."
+                f"🔒 İşiniz bittiğinde aşağıdaki **'Talebi Kapat & Arşivle'** butonuna basarak odayı sonlandırabilirsiniz.\n"
+                f"*(Tüm görüşmeler kayıt altına alınmaktadır).* 📜"
             ),
             color=COLOR_CAFE
         )
@@ -61,7 +108,6 @@ class TicketsCog(commands.Cog, name="Destek"):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # Butonların bot yeniden başladığında da dinlenmesini sağla (Persistent Views)
         self.bot.add_view(TicketOpenView())
         self.bot.add_view(TicketCloseView())
 

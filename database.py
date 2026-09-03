@@ -78,6 +78,37 @@ async def init_db():
             PRIMARY KEY (user_id, guild_id)
         )
     """)
+
+    # 7. Komut Günlükleri (Audit Logging)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS command_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            user_name TEXT,
+            command_name TEXT,
+            command_args TEXT,
+            channel_name TEXT,
+            guild_id INTEGER,
+            executed_at TEXT
+        )
+    ''')
+
+    # 8. Destek / Bilet Günlükleri
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS ticket_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_channel_id INTEGER UNIQUE,
+            ticket_name TEXT,
+            user_id INTEGER,
+            user_name TEXT,
+            opened_at TEXT,
+            closed_at TEXT,
+            closed_by TEXT,
+            transcript_text TEXT,
+            status TEXT DEFAULT 'AÇIK'
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -171,6 +202,99 @@ def get_top_leaderboard(guild_id, limit=10):
     conn = get_connection()
     c = conn.cursor()
     c.execute("SELECT user_id, xp, level FROM user_levels WHERE guild_id = ? ORDER BY xp DESC LIMIT ?", (guild_id, limit))
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+
+# --- Raporlama & Denetim Metotları ---
+def log_command(user_id, user_name, command_name, command_args, channel_name, guild_id):
+    conn = get_connection()
+    c = conn.cursor()
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    c.execute('''
+        INSERT INTO command_logs (user_id, user_name, command_name, command_args, channel_name, guild_id, executed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (user_id, user_name, command_name, str(command_args), channel_name, guild_id, now))
+    conn.commit()
+    conn.close()
+
+def get_top_command_users(limit=5):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute('''
+        SELECT user_name, user_id, COUNT(*) as cmd_count
+        FROM command_logs
+        GROUP BY user_id
+        ORDER BY cmd_count DESC
+        LIMIT ?
+    ''', (limit,))
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+def get_top_commands(limit=5):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute('''
+        SELECT command_name, COUNT(*) as use_count
+        FROM command_logs
+        GROUP BY command_name
+        ORDER BY use_count DESC
+        LIMIT ?
+    ''', (limit,))
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+def get_recent_command_logs(limit=15):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute('''
+        SELECT user_name, command_name, command_args, channel_name, executed_at
+        FROM command_logs
+        ORDER BY id DESC
+        LIMIT ?
+    ''', (limit,))
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+def get_all_command_logs_full():
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute('SELECT * FROM command_logs ORDER BY id DESC')
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+def create_ticket_log(ticket_channel_id, ticket_name, user_id, user_name):
+    conn = get_connection()
+    c = conn.cursor()
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    c.execute('''
+        INSERT OR REPLACE INTO ticket_logs (ticket_channel_id, ticket_name, user_id, user_name, opened_at, status)
+        VALUES (?, ?, ?, ?, ?, 'AÇIK')
+    ''', (ticket_channel_id, ticket_name, user_id, user_name, now))
+    conn.commit()
+    conn.close()
+
+def close_ticket_log(ticket_channel_id, closed_by, transcript_text):
+    conn = get_connection()
+    c = conn.cursor()
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    c.execute('''
+        UPDATE ticket_logs
+        SET closed_at = ?, closed_by = ?, transcript_text = ?, status = 'KAPALI'
+        WHERE ticket_channel_id = ?
+    ''', (now, closed_by, transcript_text, ticket_channel_id))
+    conn.commit()
+    conn.close()
+
+def get_all_tickets():
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute('SELECT * FROM ticket_logs ORDER BY id DESC')
     rows = [dict(r) for r in c.fetchall()]
     conn.close()
     return rows
