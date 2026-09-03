@@ -65,7 +65,8 @@ class AlaCafeBot(commands.Bot):
             "cogs.utility",            # 📊 Sunucu Bilgi & Araçlar
             "cogs.tickets",            # 🎫 Destek Masası
             "cogs.giveaway",           # 🎉 Çekiliş Sistemi
-            "cogs.game_invites"        # 🎮 Özel DM Oyun Davetleri
+            "cogs.game_invites",       # 🎮 Özel DM Oyun Davetleri
+            "cogs.ziya_ai"             # ☕ Ziya Ortak AI (Yapay Zeka Danışmanı)
         ]
         for cog in cogs:
             try:
