@@ -64,7 +64,8 @@ class AlaCafeBot(commands.Bot):
             "cogs.welcome",            # 👋 Dinamik Karşılama
             "cogs.utility",            # 📊 Sunucu Bilgi & Araçlar
             "cogs.tickets",            # 🎫 Destek Masası
-            "cogs.giveaway"            # 🎉 Çekiliş Sistemi
+            "cogs.giveaway",           # 🎉 Çekiliş Sistemi
+            "cogs.game_invites"        # 🎮 Özel DM Oyun Davetleri
         ]
         for cog in cogs:
             try:
