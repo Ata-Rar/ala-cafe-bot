@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>☕ Ala Cafe & Lounge — Web Dashboard v4.0</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            900: '#0d0e15',
+                            800: '#141622',
+                            700: '#1c1e30',
+                            600: '#282b43',
+                            border: '#2e3250'
+                        },
+                        ala: {
+                            gold: '#fab387',
+                            emerald: '#a6e3a1',
+                            sapphire: '#89b4fa',
+                            ruby: '#f38ba8',
+                            lavender: '#b4befe'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .glass {
+            background: rgba(20, 22, 34, 0.75);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .discord-card {
+            background-color: #2b2d31;
+            border-left: 4px solid #fab387;
+        }
+    </style>
+</head>
+<body class="bg-dark-900 text-slate-100 min-h-screen flex flex-col selection:bg-ala-gold selection:text-dark-900">
+
+    <!-- ÜST NAVBAR -->
+    <header class="sticky top-0 z-50 glass border-b border-dark-border px-6 py-3.5 flex items-center justify-between">
+        <div class="flex items-center gap-3.5">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-ala-gold flex items-center justify-center text-dark-900 shadow-lg shadow-amber-500/20 font-bold text-xl">
+                ☕
+            </div>
+            <div>
+                <h1 class="text-lg font-bold text-white flex items-center gap-2">
+                    Ala Cafe & Lounge
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-ala-gold border border-amber-500/30 font-medium">v4.0 Pro</span>
+                </h1>
+                <p class="text-xs text-slate-400">Master Discord Bot Kontrol ve Yönetim Stüdyosu</p>
+            </div>
+        </div>
+
+        <!-- Canlı Durum ve Güç Butonları -->
+        <div class="flex items-center gap-3">
+            <div id="statusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-800">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>ÇEVRİMİÇİ</span>
+            </div>
+
+            <div class="flex items-center bg-dark-800 border border-dark-border rounded-xl p-1 gap-1">
+                <button onclick="botAction('start')" title="Botu Başlat" class="p-2 hover:bg-emerald-500/20 text-emerald-400 rounded-lg transition">
+                    <i data-lucide="play" class="w-4 h-4"></i>
+                </button>
+                <button onclick="botAction('stop')" title="Botu Durdur" class="p-2 hover:bg-rose-500/20 text-rose-400 rounded-lg transition">
+                    <i data-lucide="square" class="w-4 h-4"></i>
+                </button>
+                <button onclick="botAction('restart')" title="Yeniden Başlat" class="p-2 hover:bg-ala-sapphire/20 text-ala-sapphire rounded-lg transition">
+                    <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ANA ALAN: SIDEBAR + İÇERİK -->
+    <div class="flex-1 flex overflow-hidden">
+        
+        <!-- YAN MENÜ (SIDEBAR) -->
+        <aside class="w-64 glass border-r border-dark-border p-4 flex flex-col justify-between shrink-0">
+            <nav class="space-y-1.5">
+                <button onclick="switchTab('tab-overview')" class="nav-btn active w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-ala-gold bg-dark-700/80 border border-dark-border">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                    Ana Gösterge
+                </button>
+                <button onclick="switchTab('tab-studio')" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-300 hover:text-white hover:bg-dark-700/50">
+                    <i data-lucide="message-square-plus" class="w-4 h-4 text-ala-sapphire"></i>
+                    Karşılama & Rol Stüdyosu
+                </button>
+                <button onclick="switchTab('tab-music')" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-300 hover:text-white hover:bg-dark-700/50">
+                    <i data-lucide="disc" class="w-4 h-4 text-emerald-400"></i>
+                    Müzik İstasyonu
+                </button>
+                <button onclick="switchTab('tab-vip')" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-300 hover:text-white hover:bg-dark-700/50">
+                    <i data-lucide="shield-check" class="w-4 h-4 text-amber-400"></i>
+                    Yönetim & VIP Kadrosu
+                </button>
+                <button onclick="switchTab('tab-nargile')" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-300 hover:text-white hover:bg-dark-700/50">
+                    <i data-lucide="flame" class="w-4 h-4 text-rose-400"></i>
+                    Meşhur Nargileler
+                </button>
+                <button onclick="switchTab('tab-transcripts')" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-300 hover:text-white hover:bg-dark-700/50">
+                    <i data-lucide="file-text" class="w-4 h-4 text-purple-400"></i>
+                    Chat Döküm Arşivi
+                </button>
+                <button onclick="switchTab('tab-terminal')" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-300 hover:text-white hover:bg-dark-700/50">
+                    <i data-lucide="terminal" class="w-4 h-4 text-cyan-400"></i>
+                    Canlı Konsol
+                </button>
+            </nav>
+
+            <!-- Alt Bilgi Kutusu -->
+            <div class="p-3 rounded-xl bg-dark-800/80 border border-dark-border text-xs text-slate-400 space-y-1">
+                <div class="flex justify-between">
+                    <span>Hedef Sunucu:</span>
+                    <span class="text-white font-medium">Ala Lounge</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Panel Portu:</span>
+                    <span class="text-emerald-400 font-mono">5050 (Yerel)</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- İÇERİK BÖLÜMÜ -->
+        <main class="flex-1 overflow-y-auto p-8 space-y-6 bg-dark-900/50">
+
+            <!-- ==================== SEKME 1: ANA GÖSTERGE ==================== -->
+            <div id="tab-overview" class="tab-content space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <!-- Kart 1: Bot Durumu -->
+                    <div class="glass p-5 rounded-2xl border border-dark-border flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 text-2xl">
+                            🤖
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Bot Durumu</div>
+                            <div id="statBotStatus" class="text-lg font-bold text-white">Çevrimiçi</div>
+                        </div>
+                    </div>
+                    <!-- Kart 2: CPU Kullanımı -->
+                    <div class="glass p-5 rounded-2xl border border-dark-border flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-ala-sapphire/10 border border-ala-sapphire/20 flex items-center justify-center text-ala-sapphire">
+                            <i data-lucide="cpu" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-400 uppercase tracking-wider font-semibold">CPU Yükü</div>
+                            <div id="statCpu" class="text-lg font-bold text-white font-mono">%0.0</div>
+                        </div>
+                    </div>
+                    <!-- Kart 3: RAM Kullanımı -->
+                    <div class="glass p-5 rounded-2xl border border-dark-border flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                            <i data-lucide="hard-drive" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Sistem Bellek</div>
+                            <div id="statRam" class="text-lg font-bold text-white font-mono">%0</div>
+                        </div>
+                    </div>
+                    <!-- Kart 4: Slash Komutları -->
+                    <div class="glass p-5 rounded-2xl border border-dark-border flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                            <i data-lucide="command" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Aktif Komutlar</div>
+                            <div class="text-lg font-bold text-white">30 Adet Slash</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hızlı Panel / Hoş Geldin & Müzik Özeti -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="glass p-6 rounded-2xl border border-dark-border space-y-4">
+                        <h3 class="text-base font-bold text-white flex items-center gap-2">
+                            <i data-lucide="sparkles" class="w-5 h-5 text-ala-gold"></i>
+                            Ala Cafe v4.0 Neler Yapabilir?
+                        </h3>
+                        <p class="text-sm text-slate-300 leading-relaxed">
+                            Bu panel üzerinden artık Discord botunu doğrudan yönetebilirsin:
+                        </p>
+                        <ul class="text-sm text-slate-400 space-y-2">
+                            <li class="flex items-center gap-2">
+                                <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+                                <strong>Karşılama Stüdyosu:</strong> Gelen kişiye atılacak mesajı canlı Discord önizlemesiyle düzenle.
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+                                <strong>Müzik İstasyonu:</strong> Web üzerinden şarkı aç, duraklat, sesini ayarla.
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+                                <strong>VIP ve Nargile:</strong> İmtiyazlı üyeleri ve kafe tütün reçetelerini anında kaydet.
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Canlı Konsol Önizlemesi -->
+                    <div class="glass p-6 rounded-2xl border border-dark-border space-y-3 flex flex-col">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                                <i data-lucide="terminal" class="w-5 h-5 text-cyan-400"></i>
+                                Anlık Sistem Logları
+                            </h3>
+                            <button onclick="fetchLogs()" class="text-xs text-slate-400 hover:text-white flex items-center gap-1">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Yenile
+                            </button>
+                        </div>
+                        <div id="overviewLogs" class="font-mono text-xs p-3 rounded-xl bg-dark-900 border border-dark-border text-slate-300 h-48 overflow-y-auto space-y-1">
+                            Yükleniyor...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== SEKME 2: KARŞILAMA & ROL STÜDYOSU ==================== -->
+            <div id="tab-studio" class="tab-content hidden space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="message-square-plus" class="w-6 h-6 text-ala-sapphire"></i>
+                        Karşılama & Rol Stüdyosu
+                    </h2>
+                    <p class="text-sm text-slate-400">Yeni bir üye sunucuya katıldığında botun vereceği cevabı ve vereceği rolü buradan canlı olarak tasarla.</p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Sol Taraf: Düzenleme Formu -->
+                    <div class="glass p-6 rounded-2xl border border-dark-border space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">1. Embed Başlığı</label>
+                            <input type="text" id="inpWelcomeTitle" oninput="updateLivePreview()" placeholder="Örn: ☕ Ala Lounge'a Hoş Geldiniz!" class="w-full px-4 py-2.5 rounded-xl bg-dark-900 border border-dark-border text-white text-sm focus:outline-none focus:border-ala-gold transition">
+                        </div>
+
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-300">2. Karşılama Mesajı</label>
+                                <span class="text-xs text-emerald-400 font-mono font-medium">{kullanici} • {sunucu} • {uye_sayisi}</span>
+                            </div>
+                            <textarea id="inpWelcomeMsg" rows="4" oninput="updateLivePreview()" placeholder="Aramıza hoş geldin {kullanici}! Boş masalara geçebilirsin..." class="w-full px-4 py-2.5 rounded-xl bg-dark-900 border border-dark-border text-white text-sm focus:outline-none focus:border-ala-gold transition"></textarea>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">Karşılama Kanalı ID</label>
+                                <input type="text" id="inpWelcomeChannel" placeholder="Kanal ID (Örn: 11124066...)" class="w-full px-4 py-2.5 rounded-xl bg-dark-900 border border-dark-border text-white text-sm focus:outline-none focus:border-ala-gold font-mono">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">Otomatik Üye Rolü (Otorol) ID</label>
+                                <input type="text" id="inpAutoRole" placeholder="Rol ID (Örn: 1115894...)" class="w-full px-4 py-2.5 rounded-xl bg-dark-900 border border-dark-border text-white text-sm focus:outline-none focus:border-ala-gold font-mono">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">Bot Aktivite / Oynuyor Metni</label>
+                            <input type="text" id="inpBotActivity" placeholder="Discord'da botun altında yazan metin" class="w-full px-4 py-2.5 rounded-xl bg-dark-900 border border-dark-border text-white text-sm focus:outline-none focus:border-ala-gold transition">
+                        </div>
+
+                        <button onclick="saveCustomizations()" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-ala-gold text-dark-900 font-bold text-sm shadow-lg shadow-amber-500/20 hover:opacity-95 transition flex items-center justify-center gap-2">
+                            <i data-lucide="save" class="w-4 h-4"></i>
+                            TÜM DEĞİŞİKLİKLERİ KAYDET & BOTA YANSIT
+                        </button>
+                    </div>
+
+                    <!-- Sağ Taraf: CANLI DİSCORD ÖNİZLEME (MOCK DISCORD) -->
+                    <div class="space-y-3">
+                        <div class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                            <i data-lucide="eye" class="w-4 h-4 text-emerald-400"></i>
+                            Canlı Discord Görünümü (Nasıl Görünecek?)
+                        </div>
+
+                        <!-- Discord Mock Chat Box -->
+                        <div class="rounded-2xl bg-[#313338] border border-black/20 p-5 shadow-2xl space-y-4">
+                            <!-- Mesaj Gönderen (Bot) -->
+                            <div class="flex items-start gap-3.5">
+                                <div class="w-10 h-10 rounded-full bg-amber-600 flex items-center justify-center text-xl shrink-0">
+                                    ☕
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-semibold text-sm text-white hover:underline cursor-pointer">Ala Cafe Çalışanı</span>
+                                        <span class="bg-[#5865F2] text-[10px] text-white font-bold px-1 rounded">BOT</span>
+                                        <span class="text-[11px] text-[#949BA4]">Bugün saat 19:45</span>
+                                    </div>
+                                    <p class="text-sm text-[#DBDEE1] mt-0.5">
+                                        🎉 <span class="text-[#00A8FC] bg-[#2B2D31] px-1 rounded font-medium cursor-pointer">@YeniÜye</span> kapıdan içeri girdi!
+                                    </p>
+
+                                    <!-- Canlı Discord Embed Kartı -->
+                                    <div class="mt-2 discord-card rounded-r p-4 max-w-lg space-y-2 border-l-4 border-ala-gold">
+                                        <h4 id="prevTitle" class="text-base font-bold text-white">☕ Ala Lounge'a Hoş Geldiniz!</h4>
+                                        <p id="prevMsg" class="text-sm text-[#DBDEE1] leading-relaxed whitespace-pre-line">
+                                            Aramıza hoş geldin @YeniÜye! Boş masalara geçebilir, sıcak muhabbetimize katılabilirsin. Sunucumuz seninle beraber 145 kişi oldu! 💨
+                                        </p>
+                                        <div class="pt-2 text-[11px] text-[#949BA4] border-t border-white/5">
+                                            Sunucunun 145. üyesisin! • Ala Lounge
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-4 rounded-xl bg-dark-800/80 border border-dark-border text-xs text-slate-400 space-y-1">
+                            <p class="font-semibold text-slate-200">💡 İpucu:</p>
+                            <p>Mesaj alanına yazdığın <code class="text-ala-gold font-mono">{kullanici}</code> etiketi otomatik olarak yeni gelen üyeyi etiketler. <code class="text-ala-gold font-mono">{sunucu}</code> sunucu adını, <code class="text-ala-gold font-mono">{uye_sayisi}</code> ise toplam üye sayısını gösterir.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== SEKME 3: MÜZİK İSTASYONU ==================== -->
+            <div id="tab-music" class="tab-content hidden space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="disc" class="w-6 h-6 text-emerald-400"></i>
+                        Canlı Müzik Konsolu
+                    </h2>
+                    <p class="text-sm text-slate-400">Discord'a girmeden, doğrudan web sitesi üzerinden şarkı aratıp ses kanalında çalabilirsin.</p>
+                </div>
+
+                <!-- Şarkı Arama Çubuğu -->
+                <div class="glass p-5 rounded-2xl border border-dark-border flex gap-3">
+                    <input type="text" id="inpMusicSearch" placeholder="Şarkı adı, sanatçı veya Spotify / SoundCloud linki yaz..." class="flex-1 px-4 py-3 rounded-xl bg-dark-900 border border-dark-border text-white text-sm focus:outline-none focus:border-emerald-400 transition">
+                    <button onclick="webPlayMusic()" class="px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-dark-900 font-bold text-sm transition flex items-center gap-2">
+                        <i data-lucide="play" class="w-4 h-4"></i>
+                        Çal / Sıraya Ekle
+                    </button>
+                </div>
+
+                <!-- Müzik Kontrol Kartı -->
+                <div class="glass p-6 rounded-2xl border border-dark-border space-y-6">
+                    <div class="flex items-center justify-between border-b border-dark-border pb-4">
+                        <div class="flex items-center gap-4">
+                            <div class="w-16 h-16 rounded-xl bg-dark-800 border border-dark-border flex items-center justify-center text-3xl">
+                                🎵
+                            </div>
+                            <div>
+                                <div class="text-xs text-emerald-400 uppercase tracking-wider font-semibold">Ses Motoru Aktif</div>
+                                <h3 id="currentTrackTitle" class="text-lg font-bold text-white">Ses Kanalına Bağlanmaya Hazır</h3>
+                                <p class="text-xs text-slate-400">SoundCloud / YouTube / Spotify Entegrasyonu</p>
+                            </div>
+                        </div>
+
+                        <!-- Ses Slider -->
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="volume-2" class="w-5 h-5 text-slate-400"></i>
+                            <input type="range" min="10" max="150" value="80" id="volSlider" oninput="document.getElementById('volValue').innerText = this.value + '%'" class="w-32 accent-emerald-400">
+                            <span id="volValue" class="text-xs font-mono font-bold text-white w-10">80%</span>
+                        </div>
+                    </div>
+
+                    <!-- Müzik Butonları -->
+                    <div class="flex items-center justify-center gap-4">
+                        <button class="p-3 rounded-xl bg-dark-800 hover:bg-dark-700 text-slate-200 border border-dark-border transition">
+                            <i data-lucide="skip-back" class="w-5 h-5"></i>
+                        </button>
+                        <button class="p-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-dark-900 font-bold transition shadow-lg shadow-emerald-500/20">
+                            <i data-lucide="pause" class="w-6 h-6"></i>
+                        </button>
+                        <button class="p-3 rounded-xl bg-dark-800 hover:bg-dark-700 text-slate-200 border border-dark-border transition">
+                            <i data-lucide="skip-forward" class="w-5 h-5"></i>
+                        </button>
+                        <button class="p-3 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 transition" title="Sesten Ayrıl">
+                            <i data-lucide="power" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== SEKME 4: YÖNETİM & VIP ==================== -->
+            <div id="tab-vip" class="tab-content hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                            <i data-lucide="shield-check" class="w-6 h-6 text-amber-400"></i>
+                            Yönetim & VIP Kadrosu
+                        </h2>
+                        <p class="text-sm text-slate-400">Sunucunun kurucularını, yöneticilerini ve VIP konuklarını buradan yönet.</p>
+                    </div>
+                    <button onclick="openVipModal()" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-dark-900 font-bold text-sm transition flex items-center gap-2">
+                        <i data-lucide="user-plus" class="w-4 h-4"></i>
+                        Yeni Kişi Ekle
+                    </button>
+                </div>
+
+                <!-- VIP Listesi Tablosu -->
+                <div class="glass rounded-2xl border border-dark-border overflow-hidden">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-dark-800/90 text-xs uppercase font-bold text-slate-400 border-b border-dark-border">
+                            <tr>
+                                <th class="px-6 py-4">Discord ID</th>
+                                <th class="px-6 py-4">İsim / Rumuz</th>
+                                <th class="px-6 py-4">Unvan / Rol</th>
+                                <th class="px-6 py-4">Protokol Notu</th>
+                                <th class="px-6 py-4">Kayıt Tarihi</th>
+                                <th class="px-6 py-4 text-right">İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vipTableBody" class="divide-y divide-dark-border text-slate-300">
+                            <!-- Dinamik dolar -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ==================== SEKME 5: MEŞHUR NARGİLELER ==================== -->
+            <div id="tab-nargile" class="tab-content hidden space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="flame" class="w-6 h-6 text-rose-400"></i>
+                        Ala Cafe Meşhur Nargile & Tütün Menüsü
+                    </h2>
+                    <p class="text-sm text-slate-400">Kafenin imza karışımları, lüle ayarları ve usta köz tüyoları.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Kart 1 -->
+                    <div class="glass p-6 rounded-2xl border border-dark-border space-y-3 relative overflow-hidden">
+                        <div class="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-400 w-fit font-bold">İmza Karışım</div>
+                        <h3 class="text-lg font-bold text-white">Ala Special (%40 Love + %30 Lady + %20 Mango + %10 Buz)</h3>
+                        <p class="text-xs text-slate-300">Yoğun meyvemsi, tatlı ve devasa beyaz duman. Lotus HMD ve 3 adet 26mm küp köz önerilir.</p>
+                    </div>
+                    <!-- Kart 2 -->
+                    <div class="glass p-6 rounded-2xl border border-dark-border space-y-3 relative overflow-hidden">
+                        <div class="text-xs px-2.5 py-1 rounded-full bg-purple-500/20 text-purple-400 w-fit font-bold">Boğaz Esintisi</div>
+                        <h3 class="text-lg font-bold text-white">Bosphorus Night (%50 Yaban Mersini + %30 Guava + %20 Nane)</h3>
+                        <p class="text-xs text-slate-300">Mayhoş orman meyveleri ve ferahlatıcı taze nane esintisi.</p>
+                    </div>
+                    <!-- Kart 3 -->
+                    <div class="glass p-6 rounded-2xl border border-dark-border space-y-3 relative overflow-hidden">
+                        <div class="text-xs px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-400 w-fit font-bold">Geleneksel Klasik</div>
+                        <h3 class="text-lg font-bold text-white">Nostalji Çift Elma & Nane (%80 Nakhla + %20 Nane)</h3>
+                        <p class="text-xs text-slate-300">Tok anason vuruşu, esnaf kahvehanesi klasiği. Toprak lüle ve deri marpuç şarttır.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== SEKME 6: CHAT DÖKÜM ARŞİVİ ==================== -->
+            <div id="tab-transcripts" class="tab-content hidden space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="file-text" class="w-6 h-6 text-purple-400"></i>
+                        Chat Metin Döküm Arşivi
+                    </h2>
+                    <p class="text-sm text-slate-400">Discord kanallarından `/chat-dokum` ile çekilmiş tüm sohbet kayıtları.</p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Sol: Dosya Listesi -->
+                    <div class="glass p-4 rounded-2xl border border-dark-border space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Kayıtlı Sohbetler</span>
+                            <button onclick="fetchTranscripts()" class="text-xs text-ala-gold hover:underline">Yenile</button>
+                        </div>
+                        <div id="transcriptList" class="space-y-1.5 max-h-[500px] overflow-y-auto">
+                            <!-- Dinamik -->
+                        </div>
+                    </div>
+
+                    <!-- Sağ: Dosya İçeriği -->
+                    <div class="lg:col-span-2 glass p-5 rounded-2xl border border-dark-border flex flex-col space-y-3">
+                        <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                            <span id="transSelectedTitle" class="text-sm font-bold text-white">Bir dosya seçin</span>
+                            <a id="btnTransDownload" href="#" class="hidden px-3 py-1.5 rounded-lg bg-dark-700 hover:bg-dark-600 text-xs font-medium text-white flex items-center gap-1.5">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> İndir (.txt)
+                            </a>
+                        </div>
+                        <pre id="transContent" class="font-mono text-xs p-4 rounded-xl bg-dark-900 border border-dark-border text-slate-300 flex-1 overflow-auto h-[450px] whitespace-pre-wrap">Soldaki listeden bir chat döküm dosyası seçtiğinizde içeriği burada görüntülenecektir.</pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== SEKME 7: CANLI KONSOL (TERMINAL) ==================== -->
+            <div id="tab-terminal" class="tab-content hidden space-y-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                            <i data-lucide="terminal" class="w-6 h-6 text-cyan-400"></i>
+                            Canlı Terminal Monitörü
+                        </h2>
+                        <p class="text-sm text-slate-400">Botun gerçek zamanlı Python konsol akışı ve hata kayıtları.</p>
+                    </div>
+                    <button onclick="fetchLogs()" class="px-4 py-2 rounded-xl bg-dark-800 hover:bg-dark-700 text-xs font-bold text-white border border-dark-border flex items-center gap-2">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Yenile
+                    </button>
+                </div>
+
+                <div id="fullConsole" class="font-mono text-xs p-6 rounded-2xl bg-dark-900 border border-dark-border text-emerald-400 h-[550px] overflow-y-auto space-y-1 shadow-inner">
+                    Loglar bekleniyor...
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- VIP EKLEME MODALI -->
+    <div id="vipModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="glass w-full max-w-md p-6 rounded-2xl border border-dark-border space-y-4">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <h3 class="text-lg font-bold text-white">➕ Yeni VIP / Yönetici Ekle</h3>
+                <button onclick="closeVipModal()" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="space-y-3 text-sm">
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-400 mb-1">Discord ID (Rakamlar)</label>
+                    <input type="text" id="vipInpId" placeholder="Örn: 154489827..." class="w-full px-3.5 py-2.5 rounded-xl bg-dark-900 border border-dark-border text-white text-sm focus:outline-none focus:border-amber-400 font-mono">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-400 mb-1">İsim / Rumuz</label>
+                    <input type="text" id="vipInpName" placeholder="Örn: Hayri" class="w-full px-3.5 py-2.5 rounded-xl bg-dark-900 border border-dark-border text-white text-sm focus:outline-none focus:border-amber-400">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-400 mb-1">Unvan / Rol</label>
+                    <input type="text" id="vipInpTitle" placeholder="Örn: Kurucu & Patron" class="w-full px-3.5 py-2.5 rounded-xl bg-dark-900 border border-dark-border text-white text-sm focus:outline-none focus:border-amber-400">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-400 mb-1">Protokol Notu</label>
+                    <input type="text" id="vipInpNotes" placeholder="Örn: Özel misafir masası" class="w-full px-3.5 py-2.5 rounded-xl bg-dark-900 border border-dark-border text-white text-sm focus:outline-none focus:border-amber-400">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 pt-2">
+                <button onclick="closeVipModal()" class="px-4 py-2 rounded-xl bg-dark-800 text-slate-300 text-xs font-semibold">İptal</button>
+                <button onclick="saveVip()" class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-dark-900 text-xs font-bold transition">Kaydet</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT BAĞLANTILARI -->
+    <script>
+        lucide.createIcons();
+
+        // Sekme Değiştirici
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(tabId).classList.remove('hidden');
+
+            document.querySelectorAll('.nav-btn').forEach(b => {
+                b.classList.remove('text-ala-gold', 'bg-dark-700/80', 'border', 'border-dark-border');
+                b.classList.add('text-slate-300');
+            });
+            event.currentTarget.classList.add('text-ala-gold', 'bg-dark-700/80', 'border', 'border-dark-border');
+            event.currentTarget.classList.remove('text-slate-300');
+
+            if(tabId === 'tab-terminal' || tabId === 'tab-overview') fetchLogs();
+            if(tabId === 'tab-vip') fetchVips();
+            if(tabId === 'tab-transcripts') fetchTranscripts();
+        }
+
+        // Canlı Discord Önizleme Güncelleme
+        function updateLivePreview() {
+            const title = document.getElementById('inpWelcomeTitle').value || "☕ Ala Lounge'a Hoş Geldiniz!";
+            let msg = document.getElementById('inpWelcomeMsg').value || "Aramıza hoş geldin {kullanici}!";
+
+            msg = msg.replace(/{kullanici}/g, "@YeniÜye")
+                     .replace(/{kullanici_adi}/g, "YeniÜye")
+                     .replace(/{sunucu}/g, "Ala Lounge")
+                     .replace(/{uye_sayisi}/g, "145");
+
+            document.getElementById('prevTitle').innerText = title;
+            document.getElementById('prevMsg').innerText = msg;
+        }
+
+        // Durum Verilerini Çek
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                
+                const badge = document.getElementById('statusBadge');
+                const statTxt = document.getElementById('statBotStatus');
+                if (data.running) {
+                    badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-800";
+                    badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>ÇEVRİMİÇİ</span>`;
+                    statTxt.innerText = "Çevrimiçi (Aktif)";
+                    statTxt.className = "text-lg font-bold text-emerald-400";
+                } else {
+                    badge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-rose-950/80 text-rose-400 border border-rose-800";
+                    badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-400"></span><span>DURDURULDU</span>`;
+                    statTxt.innerText = "Kapalı";
+                    statTxt.className = "text-lg font-bold text-rose-400";
+                }
+
+                document.getElementById('statCpu').innerText = `%${data.cpu}`;
+                document.getElementById('statRam').innerText = `%${data.ram_percent} (${data.ram_used_mb} MB)`;
+            } catch (err) {
+                console.error("Status hatası:", err);
+            }
+        }
+
+        // Bot Eylemleri (Başlat/Durdur/Restart)
+        async function botAction(act) {
+            try {
+                const res = await fetch(`/api/bot/${act}`, { method: 'POST' });
+                const d = await res.json();
+                fetchStatus();
+                fetchLogs();
+            } catch (err) {
+                alert("İşlem hatası: " + err);
+            }
+        }
+
+        // Özelleştirmeleri Yükle
+        async function loadCustomizations() {
+            try {
+                const res = await fetch('/api/customizations');
+                const data = await res.json();
+                document.getElementById('inpWelcomeTitle').value = data.welcome_title;
+                document.getElementById('inpWelcomeMsg').value = data.welcome_message;
+                document.getElementById('inpBotActivity').value = data.bot_activity;
+                document.getElementById('inpWelcomeChannel').value = data.welcome_channel_id || "";
+                document.getElementById('inpAutoRole').value = data.auto_role_id || "";
+                updateLivePreview();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        // Özelleştirmeleri Kaydet
+        async function saveCustomizations() {
+            const body = {
+                welcome_title: document.getElementById('inpWelcomeTitle').value,
+                welcome_message: document.getElementById('inpWelcomeMsg').value,
+                bot_activity: document.getElementById('inpBotActivity').value,
+                welcome_channel_id: document.getElementById('inpWelcomeChannel').value,
+                auto_role_id: document.getElementById('inpAutoRole').value
+            };
+            try {
+                const res = await fetch('/api/customizations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const d = await res.json();
+                alert("✅ Ayarlar başarıyla kaydedildi!");
+            } catch (err) {
+                alert("Hata: " + err);
+            }
+        }
+
+        // VIP Listesi
+        async function fetchVips() {
+            try {
+                const res = await fetch('/api/vips');
+                const vips = await res.json();
+                const tbody = document.getElementById('vipTableBody');
+                if(!vips.length) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-slate-500">Henüz kayıtlı VIP veya yönetici yok.</td></tr>`;
+                    return;
+                }
+                tbody.innerHTML = vips.map(v => `
+                    <tr class="hover:bg-dark-800/50 transition">
+                        <td class="px-6 py-4 font-mono text-xs text-ala-sapphire">${v.user_id}</td>
+                        <td class="px-6 py-4 font-semibold text-white">${v.name}</td>
+                        <td class="px-6 py-4"><span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/20">${v.title}</span></td>
+                        <td class="px-6 py-4 text-xs italic text-slate-400">${v.notes || '-'}</td>
+                        <td class="px-6 py-4 text-xs text-slate-500">${v.added_at}</td>
+                        <td class="px-6 py-4 text-right">
+                            <button onclick="deleteVip(${v.user_id})" class="text-rose-400 hover:text-rose-300 text-xs font-semibold">Sil</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        function openVipModal() { document.getElementById('vipModal').classList.remove('hidden'); }
+        function closeVipModal() { document.getElementById('vipModal').classList.add('hidden'); }
+
+        async function saveVip() {
+            const body = {
+                user_id: document.getElementById('vipInpId').value,
+                name: document.getElementById('vipInpName').value,
+                title: document.getElementById('vipInpTitle').value,
+                notes: document.getElementById('vipInpNotes').value
+            };
+            if(!body.user_id || !body.name || !body.title) { alert("Lütfen alanları doldurun."); return; }
+            await fetch('/api/vips', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            closeVipModal();
+            fetchVips();
+        }
+
+        async function deleteVip(uid) {
+            if(!confirm("Silmek istediğinize emin misiniz?")) return;
+            await fetch(`/api/vips/${uid}`, { method: 'DELETE' });
+            fetchVips();
+        }
+
+        // Chat Dökümleri
+        async function fetchTranscripts() {
+            try {
+                const res = await fetch('/api/transcripts');
+                const list = await res.json();
+                const el = document.getElementById('transcriptList');
+                if(!list.length) { el.innerHTML = `<div class="text-xs text-slate-500 p-2">Döküm bulunamadı.</div>`; return; }
+                el.innerHTML = list.map(f => `
+                    <button onclick="viewTranscript('${f.name}')" class="w-full text-left p-2.5 rounded-xl hover:bg-dark-800 transition border border-transparent hover:border-dark-border">
+                        <div class="font-mono text-xs font-bold text-slate-200 truncate">${f.name}</div>
+                        <div class="text-[11px] text-slate-500 flex justify-between mt-1">
+                            <span>${f.size_kb} KB</span>
+                            <span>${f.modified}</span>
+                        </div>
+                    </button>
+                `).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function viewTranscript(filename) {
+            document.getElementById('transSelectedTitle').innerText = filename;
+            const btn = document.getElementById('btnTransDownload');
+            btn.classList.remove('hidden');
+            btn.href = `/api/transcripts/${filename}?download=1`;
+
+            const res = await fetch(`/api/transcripts/${filename}`);
+            const d = await res.json();
+            document.getElementById('transContent').innerText = d.content || "Dosya boş.";
+        }
+
+        // Logları Çek
+        async function fetchLogs() {
+            try {
+                const res = await fetch('/api/logs');
+                const data = await res.json();
+                const html = data.logs.map(l => {
+                    let col = "text-slate-300";
+                    if(l.includes("ERROR") || l.includes("Exception")) col = "text-rose-400";
+                    else if(l.includes("WARNING")) col = "text-amber-300";
+                    else if(l.includes("senkronize") || l.includes("başarıyla")) col = "text-emerald-400";
+                    return `<div class="${col}">${l}</div>`;
+                }).join('');
+                document.getElementById('overviewLogs').innerHTML = html || "Henüz log yok.";
+                document.getElementById('fullConsole').innerHTML = html || "Henüz log yok.";
+            } catch(e) { console.error(e); }
+        }
+
+        // İlk Başlatma
+        fetchStatus();
+        loadCustomizations();
+        setInterval(fetchStatus, 3000);
+    </script>
+</body>
+</html>
