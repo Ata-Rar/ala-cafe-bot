@@ -30,6 +30,8 @@ FFMPEG_OPTIONS = {
     "options": "-vn"
 }
 
+COLOR_SPOTIFY = 0x1DB954  # Spotify Resmi Yeşili
+
 class MusicPlayerView(discord.ui.View):
     def __init__(self, cog, guild_id: int):
         super().__init__(timeout=None)
@@ -60,7 +62,6 @@ class MusicPlayerView(discord.ui.View):
         else:
             await interaction.response.send_message("❌ Atlanacak şarkı yok.", ephemeral=True)
 
-    
     @discord.ui.button(label="Döngü", style=discord.ButtonStyle.secondary, emoji="🔁", custom_id="m_loop", row=0)
     async def btn_loop(self, interaction: discord.Interaction, button: discord.ui.Button):
         cur = self.cog.loops.get(self.guild_id, False)
@@ -99,82 +100,21 @@ class MusicPlayerView(discord.ui.View):
         self.cog.set_volume(self.guild_id, new_vol)
         await interaction.response.send_message(f"🔊 Ses seviyesi: **%{new_vol}**", ephemeral=True)
 
-    @discord.ui.button(label="Kuyruk", row=1, style=discord.ButtonStyle.secondary, emoji="📜", custom_id="m_queue")
-    async def btn_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
-        q = self.cog.get_queue(self.guild_id)
-        if not q:
-            await interaction.response.send_message("📜 Sırada bekleyen başka şarkı yok.", ephemeral=True)
-            return
-        lines = [f"**{i+1}.** {track['title']} ({track.get('duration_str', 'Bilinmiyor')})" for i, track in enumerate(q[:10])]
-        embed = discord.Embed(title="📜 Müzik Çalma Sırası", description="\n".join(lines), color=COLOR_INFO)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="Durdur & Çık", row=1, style=discord.ButtonStyle.danger, emoji="⏹️", custom_id="m_stop")
-    async def btn_stop(self, interaction: discord.Interaction, button: discord.ui.Button):
-        vc = interaction.guild.voice_client
-        if vc:
-            if self.guild_id in self.cog.idle_tasks and not self.cog.idle_tasks[self.guild_id].done():
-                self.cog.idle_tasks[self.guild_id].cancel()
-                self.cog.idle_tasks.pop(self.guild_id, None)
-            self.cog.clear_queue(self.guild_id)
-            await vc.disconnect()
-            await interaction.response.send_message("⏹️ Müzik kapatıldı ve sesten ayrılındı.", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ Zaten seste değilim.", ephemeral=True)
-
 class MusicCog(commands.Cog, name="Müzik"):
     def __init__(self, bot):
         self.bot = bot
-        self.queues = {}             # guild_id -> list of track dicts
-        self.volumes = {}            # guild_id -> int (10 to 150)
-        self.now_playing = {}        # guild_id -> current track dict
-        self.idle_tasks = {}         # guild_id -> asyncio.Task (5 dk boş oda sayacı)
-        self.last_text_channels = {} # guild_id -> discord.TextChannel
-        self.loops = {}              # guild_id -> bool (şarkı tekrarı)
-        self.autoplay = {}           # guild_id -> bool (otomatik benzer şarkı çalma)
-
-    @commands.Cog.listener()
-    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-        guild = member.guild
-        vc = guild.voice_client
-        if not vc or not vc.is_connected() or not vc.channel:
-            return
-
-        # Botun olduğu odadaki gerçek insan sayısı
-        human_members = [m for m in vc.channel.members if not m.bot]
-
-        if len(human_members) == 0:
-            # Odada hiç kimse kalmadı, 5 dakikalık (300 saniye) sayaç başlat
-            if guild.id not in self.idle_tasks or self.idle_tasks[guild.id].done():
-                self.idle_tasks[guild.id] = asyncio.create_task(self._auto_disconnect_timer(guild, vc))
-        else:
-            # Biri odaya girdiğinde sayacı iptal et
-            if guild.id in self.idle_tasks and not self.idle_tasks[guild.id].done():
-                self.idle_tasks[guild.id].cancel()
-                self.idle_tasks.pop(guild.id, None)
-
-    async def _auto_disconnect_timer(self, guild: discord.Guild, vc: discord.VoiceClient):
-        try:
-            # 5 dakika (300 saniye) bekle
-            await asyncio.sleep(300)
-            if vc and vc.is_connected() and vc.channel:
-                humans = [m for m in vc.channel.members if not m.bot]
-                if len(humans) == 0:
-                    self.clear_queue(guild.id)
-                    await vc.disconnect()
-                    tch = self.last_text_channels.get(guild.id)
-                    if tch:
-                        try:
-                            await tch.send("👋 Odada 5 dakikadır kimse olmadığı için ses kanalından ayrıldım.")
-                        except Exception:
-                            pass
-        except asyncio.CancelledError:
-            pass
-        finally:
-            self.idle_tasks.pop(guild.id, None)
+        self.queues = {}
+        self.now_playing = {}
+        self.volumes = {}
+        self.loops = {}
+        self.autoplay = {}
+        self.last_text_channels = {}
+        self.idle_tasks = {}
 
     def get_queue(self, guild_id: int):
-        return self.queues.setdefault(guild_id, [])
+        if guild_id not in self.queues:
+            self.queues[guild_id] = []
+        return self.queues[guild_id]
 
     def clear_queue(self, guild_id: int):
         self.queues[guild_id] = []
@@ -189,25 +129,66 @@ class MusicCog(commands.Cog, name="Müzik"):
         if vc and vc.source and isinstance(vc.source, discord.PCMVolumeTransformer):
             vc.source.volume = vol / 100.0
 
-    def resolve_spotify(self, url: str):
+    # --- SPOTIFY GELİŞMİŞ PARSER (Şarkı, Albüm, Playlist) ---
+    def parse_spotify_url(self, raw_url: str):
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+        clean_url = raw_url.split("?")[0].strip()
+        m = re.search(r"spotify\.com/(?:intl-[a-z]+/)?(playlist|album|track)/([a-zA-Z0-9]+)", clean_url)
+        if not m:
+            return None
+
+        item_type = m.group(1)
+        item_id = m.group(2)
+        embed_url = f"https://open.spotify.com/embed/{item_type}/{item_id}"
+
         try:
-            oembed_url = f"https://open.spotify.com/oembed?url={url}"
-            req = urllib.request.Request(oembed_url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read().decode())
-                title = data.get("title", "")
-                return title
-        except Exception:
+            req = urllib.request.Request(embed_url, headers=headers)
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                html = resp.read().decode("utf-8")
+                match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html)
+                if match:
+                    data = json.loads(match.group(1))
+                    props = data.get("props", {}).get("pageProps", {})
+                    state_data = props.get("state", {}).get("data", {})
+                    entity = state_data.get("entity", {})
+
+                    title = entity.get("name") or entity.get("title") or "Spotify Listesi"
+
+                    if item_type == "track":
+                        artists_raw = entity.get("subtitle") or entity.get("artists") or ""
+                        if isinstance(artists_raw, list):
+                            artist_str = ", ".join([a.get("name", "") if isinstance(a, dict) else str(a) for a in artists_raw])
+                        else:
+                            artist_str = str(artists_raw)
+                        full_name = f"{artist_str} - {title}" if artist_str else title
+                        return {
+                            "type": "track",
+                            "title": title,
+                            "tracks": [full_name]
+                        }
+                    else:
+                        track_list = entity.get("trackList", [])
+                        tracks = []
+                        for t in track_list:
+                            t_title = t.get("title")
+                            t_art = t.get("subtitle") or ""
+                            if t_title:
+                                tracks.append(f"{t_art} - {t_title}" if t_art else t_title)
+                        return {
+                            "type": item_type,
+                            "title": title,
+                            "tracks": tracks
+                        }
+        except Exception as e:
+            print("Spotify parse hatası:", e)
             return None
 
     async def search_track(self, query: str):
-        # Spotify linki ise başlığı çöz
         if "spotify.com" in query:
-            spot_title = await asyncio.to_thread(self.resolve_spotify, query)
-            if spot_title:
-                query = spot_title
+            spot_data = await asyncio.to_thread(self.parse_spotify_url, query)
+            if spot_data and spot_data.get("tracks"):
+                query = spot_data["tracks"][0]
 
-        # Arama yap (Önce YouTube [en stabil FFmpeg akışı], sonra SoundCloud)
         def _extract():
             if not query.startswith("http"):
                 search_primary = f"ytsearch:{query}"
@@ -242,7 +223,6 @@ class MusicCog(commands.Cog, name="Müzik"):
             if not info:
                 return None
 
-            # Float duration hatasını önlemek için tam sayıya yuvarla
             raw_dur = info.get("duration", 0)
             try:
                 dur = int(float(raw_dur)) if raw_dur else 0
@@ -252,7 +232,6 @@ class MusicCog(commands.Cog, name="Müzik"):
             mins, secs = divmod(dur, 60)
             dur_str = f"{mins}:{secs:02d}" if dur else "Canlı / Bilinmiyor"
 
-            # Doğrudan akış URL'si seçimi
             stream_url = info.get("url")
             if not stream_url and "formats" in info:
                 audio_formats = [f for f in info["formats"] if f.get("acodec") != "none"]
@@ -278,22 +257,21 @@ class MusicCog(commands.Cog, name="Müzik"):
             uploader = last_track.get("uploader", "")
             title = last_track.get("title", "")
             clean_title = title.split("(")[0].split("[")[0].strip()
-            if uploader and uploader != "Bilinmeyen Sanatçı":
-                search_q = f"ytsearch5:{uploader} {clean_title} mix"
-            else:
-                search_q = f"ytsearch5:{clean_title} benzeri şarkılar"
+            query = f"ytsearch:{uploader} {clean_title} radio" if uploader else f"ytsearch:{clean_title} mix"
 
-            def _get_candidate():
+            def _search_mix():
                 with yt_dlp.YoutubeDL(YTDL_OPTS) as ydl:
-                    data = ydl.extract_info(search_q, download=False)
-                    if data and "entries" in data and data["entries"]:
-                        for e in data["entries"]:
-                            if e and e.get("title") != last_track.get("title"):
-                                return e
-                        return data["entries"][0]
-                    return None
+                    try:
+                        res = ydl.extract_info(query, download=False)
+                        if res and "entries" in res and len(res["entries"]) > 1:
+                            return res["entries"][1]
+                        if res and "entries" in res and res["entries"]:
+                            return res["entries"][0]
+                    except Exception:
+                        pass
+                return None
 
-            candidate = await asyncio.to_thread(_get_candidate)
+            candidate = await asyncio.to_thread(_search_mix)
             if candidate:
                 raw_dur = candidate.get("duration", 0)
                 try:
@@ -330,6 +308,48 @@ class MusicCog(commands.Cog, name="Müzik"):
             print("Autoplay hatası:", e)
             self.now_playing[guild_id] = None
 
+    def _start_playback(self, vc: discord.VoiceClient, guild_id: int, channel: discord.TextChannel, track: dict):
+        self.now_playing[guild_id] = track
+        vol = self.get_volume(guild_id)
+
+        try:
+            source = discord.FFmpegPCMAudio(track["url"], executable=FFMPEG_EXE, **FFMPEG_OPTIONS)
+            vol_source = discord.PCMVolumeTransformer(source, volume=vol / 100.0)
+
+            def after_finish(err):
+                if err:
+                    print("Oynatma hatası:", err)
+                if self.loops.get(guild_id, False):
+                    q_cur = self.get_queue(guild_id)
+                    q_cur.insert(0, track)
+                self.bot.loop.call_soon_threadsafe(self.play_next, guild_id, channel)
+
+            vc.play(vol_source, after=after_finish)
+
+            card_color = COLOR_SPOTIFY if track.get("is_spotify") else COLOR_SUCCESS
+            badge = "🟢 Spotify • " if track.get("is_spotify") else "🎵 "
+
+            embed = discord.Embed(
+                title=f"{badge}Şimdi Çalıyor",
+                description=(
+                    f"**[{track['title']}]({track.get('webpage_url', '')})**\n\n"
+                    f"👤 **Sanatçı:** `{track.get('uploader', 'Bilinmeyen')}`\n"
+                    f"⏱️ **Süre:** `{track.get('duration_str', 'Bilinmiyor')}`\n"
+                    f"🔊 **Ses:** `%{vol}`"
+                ),
+                color=card_color
+            )
+            if track.get("thumbnail"):
+                embed.set_thumbnail(url=track["thumbnail"])
+            embed.set_footer(text="Ala Lounge Müzik İstasyonu • Keyifli dinlemeler!")
+
+            view = MusicPlayerView(self, guild_id)
+            asyncio.run_coroutine_threadsafe(channel.send(embed=embed, view=view), self.bot.loop)
+
+        except Exception as e:
+            print("Şarkı başlatma hatası:", e)
+            self.play_next(guild_id, channel)
+
     def play_next(self, guild_id: int, channel: discord.TextChannel):
         q = self.get_queue(guild_id)
         guild = self.bot.get_guild(guild_id)
@@ -346,11 +366,9 @@ class MusicCog(commands.Cog, name="Müzik"):
         is_autoplay = self.autoplay.get(guild_id, True)
         last_track = self.now_playing.get(guild_id)
 
-        # 1. Kuyruk boşsa ve döngü açıksa aynı şarkıyı çal
         if not q and is_loop and last_track:
             q.append(last_track)
 
-        # 2. Kuyruk boşsa, döngü kapalıysa ve otomatik oynatma açıksa benzer şarkı çek
         if not q and not is_loop and is_autoplay and last_track:
             asyncio.run_coroutine_threadsafe(self._fetch_and_queue_autoplay(guild_id, channel, last_track), self.bot.loop)
             return
@@ -360,85 +378,143 @@ class MusicCog(commands.Cog, name="Müzik"):
             return
 
         track = q.pop(0)
-        self.now_playing[guild_id] = track
-        vol = self.get_volume(guild_id)
 
-        try:
-            source = discord.FFmpegPCMAudio(track["url"], executable=FFMPEG_EXE, **FFMPEG_OPTIONS)
-            vol_source = discord.PCMVolumeTransformer(source, volume=vol / 100.0)
+        # Lazy Spotify şarkısı ise sırası geldiğinde akışı çöz
+        if track.get("is_spotify_lazy"):
+            async def _resolve_and_play():
+                resolved = await self.search_track(track["query"])
+                if resolved:
+                    resolved["is_spotify"] = True
+                    self._start_playback(vc, guild_id, channel, resolved)
+                else:
+                    self.play_next(guild_id, channel)
+            asyncio.run_coroutine_threadsafe(_resolve_and_play(), self.bot.loop)
+            return
 
-            def after_finish(err):
-                if err:
-                    print("Oynatma hatası:", err)
-                if self.loops.get(guild_id, False):
-                    # Döngü açıksa bu şarkıyı tekrar kuyruğun en başına koy
-                    q_cur = self.get_queue(guild_id)
-                    q_cur.insert(0, track)
-                self.bot.loop.call_soon_threadsafe(self.play_next, guild_id, channel)
+        self._start_playback(vc, guild_id, channel, track)
 
-            vc.play(vol_source, after=after_finish)
+    async def _resolve_voice_channel(self, channel, user, target_vc: discord.VoiceChannel = None):
+        guild = channel.guild
+        member = guild.get_member(user.id) or user
+        voice_channel = target_vc
+        if not voice_channel:
+            if hasattr(member, "voice") and member.voice and member.voice.channel:
+                voice_channel = member.voice.channel
+            else:
+                for v in guild.voice_channels:
+                    if any(m.id == user.id for m in v.members):
+                        voice_channel = v
+                        break
+        vc = guild.voice_client
+        if not voice_channel and vc and vc.is_connected():
+            voice_channel = vc.channel
+        return voice_channel, vc
+
+    # --- SPOTIFY ÇALMA LİSTESİ TOPLU KUYRUĞA EKLEME ---
+    async def handle_spotify_import(self, channel, user, spot_data: dict, send_func, target_vc: discord.VoiceChannel = None):
+        guild = channel.guild
+        self.last_text_channels[guild.id] = channel
+
+        voice_channel, vc = await self._resolve_voice_channel(channel, user, target_vc)
+        if not voice_channel:
+            await send_func("❌ Ses kanalın tespit edilemedi ortak! Lütfen önce bir ses kanalına gir.")
+            return
+
+        if not vc or not vc.is_connected():
+            try:
+                vc = await voice_channel.connect(self_deaf=True)
+            except Exception as e:
+                await send_func(f"❌ Ses kanalına bağlanılamadı: {e}")
+                return
+        elif vc.channel != voice_channel:
+            await vc.move_to(voice_channel)
+
+        tracks = spot_data.get("tracks", [])
+        if not tracks:
+            await send_func("❌ Spotify listesinde çalınabilir parça bulunamadı.")
+            return
+
+        title = spot_data.get("title", "Spotify Çalma Listesi")
+        first_track_name = tracks[0]
+        q = self.get_queue(guild.id)
+
+        is_already_playing = (vc.is_playing() or vc.is_paused())
+
+        if not is_already_playing:
+            # İlk şarkıyı hemen çözüp başlat
+            first_resolved = await self.search_track(first_track_name)
+            if first_resolved:
+                first_resolved["is_spotify"] = True
+                q.append(first_resolved)
+                self.play_next(guild.id, channel)
+            
+            # Kalan tüm parçaları lazy olarak kuyruğa diz
+            for t_name in tracks[1:]:
+                q.append({
+                    "title": f"🟢 {t_name}",
+                    "query": t_name,
+                    "is_spotify_lazy": True,
+                    "is_spotify": True
+                })
 
             embed = discord.Embed(
-                title="🎵 Şimdi Çalıyor",
-                description=f"**[{track['title']}]({track['webpage_url']})**\n\n👤 **Sanatçı:** `{track['uploader']}`\n⏱️ **Süre:** `{track['duration_str']}`\n🔊 **Ses:** `%{vol}`",
-                color=COLOR_SUCCESS
+                title="🟢 Spotify Çalma Listesi Başlatıldı!",
+                description=(
+                    f"🎧 **Liste Adı:** `{title}`\n"
+                    f"📊 **Toplam Parça:** `{len(tracks)} adet şarkı`\n"
+                    f"▶️ **İlk Çalan:** **{first_track_name}**\n\n"
+                    f"Kalan {len(tracks) - 1} şarkı arka arkaya çalmak üzere sıraya alındı! 🎵"
+                ),
+                color=COLOR_SPOTIFY
             )
-            if track.get("thumbnail"):
-                embed.set_thumbnail(url=track["thumbnail"])
-            embed.set_footer(text="Ala Lounge Müzik İstasyonu • Keyifli dinlemeler!")
+            embed.set_thumbnail(url="https://images.emojiterra.com/twitter/v14.0/512px/1f3a7.png")
+            embed.set_footer(text="Ala Lounge • Spotify Müzik İstasyonu")
+            await send_func(embed=embed)
 
-            view = MusicPlayerView(self, guild_id)
-            asyncio.run_coroutine_threadsafe(channel.send(embed=embed, view=view), self.bot.loop)
+        else:
+            # Zaten çalıyorsa tüm listeyi doğrudan kuyruğa ekle
+            for t_name in tracks:
+                q.append({
+                    "title": f"🟢 {t_name}",
+                    "query": t_name,
+                    "is_spotify_lazy": True,
+                    "is_spotify": True
+                })
 
-        except Exception as e:
-            print("Şarkı başlatma hatası:", e)
-            self.play_next(guild_id, channel)
-
-    @commands.command(name="play", aliases=["oynat", "çal", "cal"])
-    async def prefix_play(self, ctx, *, sarki: str):
-        await self.handle_play(ctx.channel, ctx.author, sarki, ctx.send)
-
-    @app_commands.command(name="oynat", description="SoundCloud, Spotify veya YouTube üzerinden anında şarkı çalar")
-    @app_commands.describe(
-        sarki="Şarkı adı veya link (Spotify/YouTube/SoundCloud)",
-        kanal="İsteğe bağlı: Çalınacak ses kanalı (boş bırakırsan bulunduğun kanala otomatik gelir)"
-    )
-    async def slash_play(self, interaction: discord.Interaction, sarki: str, kanal: discord.VoiceChannel = None):
-        await interaction.response.defer(thinking=True)
-        await self.handle_play(interaction.channel, interaction.user, sarki, interaction.followup.send, kanal)
+            embed = discord.Embed(
+                title="🟢 Spotify Çalma Listesi Sıraya Eklendi!",
+                description=(
+                    f"🎧 **Liste Adı:** `{title}`\n"
+                    f"📊 **Eklenen Parça:** `{len(tracks)} adet şarkı`\n"
+                    f"📋 **Kuyruk Sırası:** #{len(q) - len(tracks) + 1} ile #{len(q)} arası"
+                ),
+                color=COLOR_SPOTIFY
+            )
+            embed.set_thumbnail(url="https://images.emojiterra.com/twitter/v14.0/512px/1f3a7.png")
+            embed.set_footer(text="Ala Lounge • Spotify Müzik İstasyonu")
+            await send_func(embed=embed)
 
     async def handle_play(self, channel, user, sarki: str, send_func, target_vc: discord.VoiceChannel = None):
         guild = channel.guild
         member = guild.get_member(user.id) or user
         self.last_text_channels[guild.id] = channel
 
-        # Yeni şarkı başlatılırken boş oda sayacı varsa iptal et
         if guild.id in self.idle_tasks and not self.idle_tasks[guild.id].done():
             self.idle_tasks[guild.id].cancel()
             self.idle_tasks.pop(guild.id, None)
 
-        # 1. Ses kanalını tespit et (Önce parametre, sonra üyenin bulunduğu ses kanalı)
-        voice_channel = target_vc
-        if not voice_channel:
-            if hasattr(member, "voice") and member.voice and member.voice.channel:
-                voice_channel = member.voice.channel
-            else:
-                # Sunucudaki tüm ses kanallarını tara
-                for v in guild.voice_channels:
-                    if any(m.id == user.id for m in v.members):
-                        voice_channel = v
-                        break
+        # Spotify playlist veya albüm mü kontrol et
+        if "spotify.com" in sarki and ("playlist" in sarki or "album" in sarki):
+            spot_data = await asyncio.to_thread(self.parse_spotify_url, sarki)
+            if spot_data and spot_data.get("tracks"):
+                await self.handle_spotify_import(channel, user, spot_data, send_func, target_vc)
+                return
 
-        # 2. Eğer hala bulunamadıysa botun zaten bağlı olduğu ses kanalı var mı bak
-        vc = guild.voice_client
-        if not voice_channel and vc and vc.is_connected():
-            voice_channel = vc.channel
-
+        voice_channel, vc = await self._resolve_voice_channel(channel, user, target_vc)
         if not voice_channel:
             await send_func("❌ Ses kanalın tespit edilemedi kral! Lütfen önce herhangi bir ses kanalına gir veya komutta ses kanalını seç.")
             return
 
-        # 3. Ses kanalına otomatik bağlan
         if not vc or not vc.is_connected():
             try:
                 vc = await voice_channel.connect(self_deaf=True)
@@ -453,14 +529,22 @@ class MusicCog(commands.Cog, name="Müzik"):
             await send_func(f"❌ `{sarki}` bulunamadı veya açılamadı. Farklı bir arama deneyin.")
             return
 
+        if "spotify.com" in sarki:
+            track["is_spotify"] = True
+
         q = self.get_queue(guild.id)
 
         if vc.is_playing() or vc.is_paused():
             q.append(track)
+            card_color = COLOR_SPOTIFY if track.get("is_spotify") else COLOR_INFO
+            badge = "🟢 Spotify • " if track.get("is_spotify") else ""
             embed = discord.Embed(
-                title="➕ Sıraya Eklendi",
-                description=f"**[{track['title']}]({track['webpage_url']})**\n\nSıradaki Pozisyon: `#{len(q)}` | Süre: `{track['duration_str']}`",
-                color=COLOR_INFO
+                title=f"➕ {badge}Sıraya Eklendi",
+                description=(
+                    f"**[{track['title']}]({track['webpage_url']})**\n\n"
+                    f"Sıradaki Pozisyon: `#{len(q)}` | Süre: `{track['duration_str']}`"
+                ),
+                color=card_color
             )
             if track.get("thumbnail"):
                 embed.set_thumbnail(url=track["thumbnail"])
@@ -469,6 +553,34 @@ class MusicCog(commands.Cog, name="Müzik"):
             q.append(track)
             await send_func(f"🔎 **{track['title']}** bulundu, başlatılıyor...")
             self.play_next(guild.id, channel)
+
+    # ==================== SPOTIFY ÖZEL KOMUTU ====================
+    @app_commands.command(name="spotify", description="Spotify playlist, albüm veya şarkı linkini anında kuyruğa ekler ve çalar")
+    @app_commands.describe(
+        link_veya_arama="Spotify playlist, albüm veya şarkı linki (veya şarkı adı)",
+        kanal="İsteğe bağlı: Çalınacak ses kanalı"
+    )
+    async def slash_spotify(self, interaction: discord.Interaction, link_veya_arama: str, kanal: discord.VoiceChannel = None):
+        await interaction.response.defer(thinking=True)
+        await self.handle_play(interaction.channel, interaction.user, link_veya_arama, interaction.followup.send, kanal)
+
+    @commands.command(name="spotify")
+    async def prefix_spotify(self, ctx, *, link_veya_arama: str):
+        await self.handle_play(ctx.channel, ctx.author, link_veya_arama, ctx.send)
+
+    # ==================== STANDART KOMUTLAR ====================
+    @commands.command(name="play", aliases=["oynat", "çal", "cal"])
+    async def prefix_play(self, ctx, *, sarki: str):
+        await self.handle_play(ctx.channel, ctx.author, sarki, ctx.send)
+
+    @app_commands.command(name="oynat", description="SoundCloud, Spotify veya YouTube üzerinden anında şarkı veya çalma listesi çalar")
+    @app_commands.describe(
+        sarki="Şarkı adı veya link (Spotify Playlist/YouTube/SoundCloud)",
+        kanal="İsteğe bağlı: Çalınacak ses kanalı"
+    )
+    async def slash_play(self, interaction: discord.Interaction, sarki: str, kanal: discord.VoiceChannel = None):
+        await interaction.response.defer(thinking=True)
+        await self.handle_play(interaction.channel, interaction.user, sarki, interaction.followup.send, kanal)
 
     @app_commands.command(name="durdur", description="Müziği duraklatır")
     async def cmd_pause(self, interaction: discord.Interaction):
@@ -507,13 +619,17 @@ class MusicCog(commands.Cog, name="Müzik"):
 
         desc = ""
         if cur:
-            desc += f"▶️ **Şimdi Çalıyor:** {cur['title']}\n\n**Sırada Bekleyenler:**\n"
+            badge = "🟢 " if cur.get("is_spotify") else "▶️ "
+            desc += f"{badge}**Şimdi Çalıyor:** {cur['title']}\n\n**Sırada Bekleyenler:**\n"
         if q:
-            desc += "\n".join([f"**{i+1}.** {t['title']}" for i, t in enumerate(q[:10])])
+            desc += "\n".join([f"**{i+1}.** {t['title']}" for i, t in enumerate(q[:15])])
+            if len(q) > 15:
+                desc += f"\n_...ve {len(q) - 15} şarkı daha sırada bekliyor._"
         else:
             desc += "_Sırada başka şarkı yok._"
 
-        embed = discord.Embed(title="📜 Müzik Çalma Sırası", description=desc, color=COLOR_INFO)
+        embed = discord.Embed(title="📜 Müzik Çalma Sırası", description=desc, color=COLOR_SPOTIFY if cur and cur.get("is_spotify") else COLOR_INFO)
+        embed.set_footer(text=f"Toplam {len(q)} şarkı sırada bekliyor")
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="ses", description="Müzik ses seviyesini ayarlar (1-150)")
@@ -553,7 +669,6 @@ class MusicCog(commands.Cog, name="Müzik"):
         await interaction.response.defer(thinking=True)
         q = queries.get(istasyon.value, queries["lofi"])
         await self.handle_play(interaction.channel, interaction.user, q, interaction.followup.send)
-
 
     @app_commands.command(name="dongu", description="Çalan şarkıyı sürekli tekrarlama modunu (Loop) açar veya kapatır")
     @app_commands.describe(durum="Döngü durumu")
