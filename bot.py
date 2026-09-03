@@ -97,7 +97,7 @@ class AlaCafeBot(commands.Bot):
                 logger.error(f"❌ [{guild.name}] sunucusuna senkronizasyon hatası: {e}")
 
         # Durum mesajını veritabanından dinamik oku
-        customs = await db.get_customizations()
+        customs = db.get_customizations()
         act_text = customs.get("bot_activity", "Ala Lounge & Nargile Masalarını 💨 | /oynat")
         activity = discord.Activity(
             type=discord.ActivityType.watching,

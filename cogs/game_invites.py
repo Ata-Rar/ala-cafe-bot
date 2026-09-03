@@ -58,6 +58,9 @@ async def send_game_invite(interaction: discord.Interaction, target: discord.Mem
         color = template["color"]
         icon = template["icon"]
 
+    # Zaman aşımını önlemek için hemen yanıtı beklemeye al
+    await interaction.response.defer()
+
     # Ses odası bilgisi (Eğer davet eden sesteyse)
     voice_info = ""
     if inviter.voice and inviter.voice.channel:
@@ -89,7 +92,7 @@ async def send_game_invite(interaction: discord.Interaction, target: discord.Mem
             description=f"🎉 **{target.mention}** adlı ortağa özelden **{custom_name or game_key.upper()}** daveti iletildi!\n\n*(Masada yerini ayırdık, gelmesini bekliyoruz).* ☕",
             color=discord.Color.green()
         )
-        await interaction.response.send_message(embed=embed_success)
+        await interaction.followup.send(embed=embed_success)
         logger.info(f"Oyun daveti gönderildi: {inviter.display_name} -> {target.display_name} ({game_key})")
 
     except discord.Forbidden:
@@ -102,9 +105,9 @@ async def send_game_invite(interaction: discord.Interaction, target: discord.Mem
             ),
             color=discord.Color.gold()
         )
-        await interaction.response.send_message(content=f"{target.mention} masaya çağrılıyorsun!", embed=embed_fail)
+        await interaction.followup.send(content=f"{target.mention} masaya çağrılıyorsun!", embed=embed_fail)
     except Exception as e:
-        await interaction.response.send_message(f"❌ Davet gönderilirken hata oluştu: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ Davet gönderilirken hata oluştu: {e}", ephemeral=True)
 
 class GameInvitesCog(commands.Cog, name="Oyun Davetleri"):
     """DM Üzerinden Özel Oyun ve Masa Davetleri"""

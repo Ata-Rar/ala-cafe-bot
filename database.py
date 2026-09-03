@@ -121,7 +121,7 @@ def get_customization(key, default=None):
     conn.close()
     return row["value"] if row else default
 
-async def get_customizations():
+def get_customizations():
     conn = get_connection()
     c = conn.cursor()
     c.execute("SELECT key, value FROM bot_customizations")
