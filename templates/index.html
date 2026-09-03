@@ -122,6 +122,10 @@
                     <i data-lucide="file-text" class="w-4 h-4 text-purple-400"></i>
                     Chat Döküm Arşivi
                 </button>
+                                <button onclick="switchTab('tab-leaderboard')" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-300 hover:text-white hover:bg-dark-700/50">
+                    <i data-lucide="trophy" class="w-4 h-4 text-yellow-400"></i>
+                    Müdavim Sıralaması
+                </button>
                 <button onclick="switchTab('tab-terminal')" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition text-slate-300 hover:text-white hover:bg-dark-700/50">
                     <i data-lucide="terminal" class="w-4 h-4 text-cyan-400"></i>
                     Canlı Konsol
@@ -489,6 +493,35 @@
                 </div>
             </div>
 
+            
+            <!-- ==================== SEKME: MÜDAVİM LİDERLİK TABLOSU ==================== -->
+            <div id="tab-leaderboard" class="tab-content hidden space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="trophy" class="w-6 h-6 text-yellow-400"></i>
+                        Ala Lounge — En Aktif Müdavimler Liderlik Tablosu
+                    </h2>
+                    <p class="text-sm text-slate-400">Sunucuda en çok sohbet eden, ses masalarında oturan ve puan kazanan elit üyeler.</p>
+                </div>
+
+                <div class="glass rounded-2xl border border-dark-border overflow-hidden">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-dark-800/90 text-xs uppercase font-bold text-slate-400 border-b border-dark-border">
+                            <tr>
+                                <th class="px-6 py-4">Sıra</th>
+                                <th class="px-6 py-4">Discord ID</th>
+                                <th class="px-6 py-4">Kafe Rütbesi</th>
+                                <th class="px-6 py-4">Seviye</th>
+                                <th class="px-6 py-4 text-right">Toplam XP</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboardBody" class="divide-y divide-dark-border text-slate-300">
+                            <!-- Dinamik dolar -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <!-- ==================== SEKME 7: CANLI KONSOL (TERMINAL) ==================== -->
             <div id="tab-terminal" class="tab-content hidden space-y-4">
                 <div class="flex items-center justify-between">
@@ -564,6 +597,7 @@
 
             if(tabId === 'tab-terminal' || tabId === 'tab-overview') fetchLogs();
             if(tabId === 'tab-vip') fetchVips();
+            if(tabId === 'tab-leaderboard') fetchLeaderboard();
             if(tabId === 'tab-transcripts') fetchTranscripts();
         }
 
@@ -797,6 +831,36 @@
         async function doLogout() {
             await fetch('/api/auth/logout', {method: 'POST'});
             location.reload();
+        }
+
+        
+        // Liderlik Tablosu Çek
+        async function fetchLeaderboard() {
+            try {
+                const res = await fetch('/api/leaderboard');
+                const data = await res.json();
+                const tbody = document.getElementById('leaderboardBody');
+                if(!data.length) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-slate-500">Henüz seviye puanı kazanmış müdavim yok. Sohbet ettikçe burası dolacaktır!</td></tr>`;
+                    return;
+                }
+                const medals = ["🥇 1.", "🥈 2.", "🥉 3.", "4.", "5.", "6.", "7.", "8.", "9.", "10."];
+                tbody.innerHTML = data.map((r, i) => {
+                    let rankTitle = "🧹 Çırak";
+                    if(r.level >= 30) rankTitle = "👑 Ala Müdavimi";
+                    else if(r.level >= 15) rankTitle = "💨 Nargile Ustası";
+                    else if(r.level >= 5) rankTitle = "☕ Kalfa";
+
+                    return `
+                    <tr class="hover:bg-dark-800/50 transition">
+                        <td class="px-6 py-4 font-bold text-white">${medals[i] || (i+1)+'.'}</td>
+                        <td class="px-6 py-4 font-mono text-xs text-ala-sapphire">${r.user_id}</td>
+                        <td class="px-6 py-4"><span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/20">${rankTitle}</span></td>
+                        <td class="px-6 py-4 font-bold text-emerald-400">Seviye ${r.level}</td>
+                        <td class="px-6 py-4 text-right font-mono font-bold text-white">${r.xp.toLocaleString()} XP</td>
+                    </tr>`;
+                }).join('');
+            } catch(e) { console.error(e); }
         }
 
         // Başlangıç kontrolü

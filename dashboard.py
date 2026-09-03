@@ -291,6 +291,19 @@ def api_logs():
             pass
     return jsonify({"logs": lines})
 
+# --- API: Müdavim Liderlik Tablosu ---
+@app.route("/api/leaderboard")
+@login_required
+def api_leaderboard():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("CREATE TABLE IF NOT EXISTS user_levels (user_id INTEGER, guild_id INTEGER, xp INTEGER DEFAULT 0, level INTEGER DEFAULT 1, last_msg_xp REAL DEFAULT 0, voice_joined_at REAL DEFAULT 0, PRIMARY KEY (user_id, guild_id))")
+    c.execute("SELECT user_id, xp, level FROM user_levels ORDER BY xp DESC LIMIT 10")
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return jsonify(rows)
+
 if __name__ == "__main__":
     print("=======================================================")
     print("  🌐 Ala Cafe Güvenli Web Dashboard Başlatıldı!")

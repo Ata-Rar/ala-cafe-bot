@@ -53,14 +53,18 @@ class AlaCafeBot(commands.Bot):
 
         # Modülleri yükle
         cogs = [
-            "cogs.music",          # 🎵 Müzik İstasyonu
-            "cogs.nargile",        # 💨 Meşhur Nargileler
-            "cogs.transcriptor",   # 📜 Chat Metin Döküm Makinesi
-            "cogs.management",     # 👑 Yönetim & VIP Kadrosu
-            "cogs.moderation",     # 🛡️ Moderasyon
-            "cogs.welcome",        # 👋 Dinamik Karşılama
-            "cogs.utility",        # 📊 Sunucu Bilgi & Araçlar
-            "cogs.tickets"         # 🎫 Destek Masası
+            "cogs.music",              # 🎵 Müzik İstasyonu
+            "cogs.tables",             # 🚪 Sanal Kafe Masaları (Join to Create)
+            "cogs.cafe_interactions",   # 💨 Köz İste & İkram
+            "cogs.loyalty",            # 🏆 Müdavim Seviye & Sadakat
+            "cogs.nargile",            # 💨 Meşhur Nargileler
+            "cogs.transcriptor",       # 📜 Chat Metin Döküm Makinesi
+            "cogs.management",         # 👑 Yönetim & VIP Kadrosu
+            "cogs.moderation",         # 🛡️ Moderasyon
+            "cogs.welcome",            # 👋 Dinamik Karşılama
+            "cogs.utility",            # 📊 Sunucu Bilgi & Araçlar
+            "cogs.tickets",            # 🎫 Destek Masası
+            "cogs.giveaway"            # 🎉 Çekiliş Sistemi
         ]
         for cog in cogs:
             try:

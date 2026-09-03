@@ -435,5 +435,24 @@ class MusicCog(commands.Cog, name="Müzik"):
         else:
             await interaction.response.send_message("❌ Seste değilim.", ephemeral=True)
 
+    @app_commands.command(name="kafe-radyo", description="7/24 kesintisiz canlı kafe ve lounge radyolarını açar!")
+    @app_commands.describe(istasyon="Dinlemek istediğin radyo tarzı")
+    @app_commands.choices(istasyon=[
+        app_commands.Choice(name="☕ Lo-Fi Chill Cafe (Ders & Rahatlama)", value="lofi"),
+        app_commands.Choice(name="🎸 Türkçe Akustik & Kafe Nostalji", value="akustik"),
+        app_commands.Choice(name="🎷 Smooth Lounge Jazz (Piyano & Saksafon)", value="jazz"),
+        app_commands.Choice(name="🎧 Deep House & Chillout Lounge", value="deephouse")
+    ])
+    async def cmd_kafe_radyo(self, interaction: discord.Interaction, istasyon: app_commands.Choice[str]):
+        queries = {
+            "lofi": "ytsearch:lofi hip hop radio beats to relax study to",
+            "akustik": "ytsearch:turkce akustik gitar kafe dinletisi",
+            "jazz": "ytsearch:coffee shop jazz relaxing piano cafe music",
+            "deephouse": "ytsearch:relaxing deep house lounge music chill"
+        }
+        await interaction.response.defer(thinking=True)
+        q = queries.get(istasyon.value, queries["lofi"])
+        await self.handle_play(interaction.channel, interaction.user, q, interaction.followup.send)
+
 async def setup(bot):
     await bot.add_cog(MusicCog(bot))
