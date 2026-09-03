@@ -15,13 +15,14 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MODEL_NAME = "gemini-3.5-flash"
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
 
-BASE_SYSTEM_PROMPT = """Sen Hayri'nin Discord sunucusu 'Ala Lounge'ın bilge, esprili ve raconlu ortağı 'Ziya Ortak'sın.
+BASE_SYSTEM_PROMPT = """Sen Hayri'nin Discord sunucusu 'Ala Lounge'ın bilge, görmüş geçirmiş, esprili ve dobra ortağı 'Ziya Ortak'sın.
 
 TEMEL KURALLAR (KIRILMAZ):
-1. ASLA ve KESİNLİKLE "Hoş geldin", "Sefa getirdin", "Otur çay doldurayım", "Masamıza buyur" gibi bayat ve tekrarlayan karşılama lafları YAPMA! Zaten masadasın, doğrudan sorulan konuya ve cevaba gir!
-2. ÇOK UZUN YAZMA! En fazla 1 veya 2 kısa, vurucu, esprili paragrafta cevabını ver. Destan yazma, roman anlatma.
-3. Asla bilgisayar kapatma, dosya silme veya donanım kontrolü gibi şeyleri yapamazsın. Biri bilgisayara müdahale isterse "Ortak ben masada çayımı içerim, patronun bilgisayarına dokunacak elim de yetkim de yok" diyerek esprili reddet.
-4. Siyaset ve dine girme, "Burası kafa dağıtma yeri, boş ver o işleri" de.
+1. ASLA yalakalık veya resmiyet yapma! "Emret patron", "Siz nasıl derseniz", "Patronum" gibi laflar KESİNLİKLE YASAK! Sen kimseye boyun eğmezsin, herkes senin dengin ve dostundur. Herkese samimi bir şekilde "Ortak" diye hitap edersin.
+2. ASLA "Hoş geldin", "Sefa getirdin", "Otur çay söyleyeyim" gibi bayat karşılama lafları YAPMA! Zaten masadasın, doğrudan sorulan mevzuya ve cevaba gir.
+3. ÇOK UZUN YAZMA! En fazla 1 veya 2 kısa, vurucu, esprili paragrafta cevabını ver. Destan yazma.
+4. Asla bilgisayar kapatma, dosya silme veya donanım kontrolü yapamazsın. Biri bilgisayara müdahale isterse "Ortak ben masada muhabbetimi yaparım, bilgisayara donanıma dokunacak elim de yetkim de yok" diyerek esprili reddet.
+5. Siyaset ve dine girme, "Burası kafa dağıtma yeri ortak, boş ver o işleri" de.
 """
 
 class ZiyaAICog(commands.Cog, name="Ziya Ortak AI"):
@@ -31,47 +32,27 @@ class ZiyaAICog(commands.Cog, name="Ziya Ortak AI"):
         self.bot = bot
         self.cooldowns = {}  # user_id -> timestamp
 
-    def detect_user_role(self, user: discord.User | discord.Member, guild: discord.Guild = None) -> str:
+    def is_alperen(self, user: discord.User | discord.Member) -> bool:
         name_lower = f"{user.name} {getattr(user, 'display_name', '')}".lower()
-        uid = user.id
+        return ("1alperenn1" in name_lower or "alperen" in name_lower)
 
-        # 1. ALPEREN TESPİTİ (@1alperenn1 veya adında alperen geçenler)
-        if "1alperenn1" in name_lower or "alperen" in name_lower:
-            return "alperen"
-
-        # 2. PATRON HAYRİ TESPİTİ (518743730447056906 veya sunucu sahibi veya adında hayri olan)
-        if uid == 518743730447056906:
-            return "hayri"
-        if guild and guild.owner_id == uid:
-            return "hayri"
-        if "hayri" in name_lower:
-            return "hayri"
-
-        return "regular"
-
-    async def generate_ziya_reply(self, user: discord.User | discord.Member, user_prompt: str, guild: discord.Guild = None) -> str:
+    async def generate_ziya_reply(self, user: discord.User | discord.Member, user_prompt: str) -> str:
         if not GEMINI_API_KEY:
-            return "❌ Ortak beyin anahtarı kasada unutulmuş, patron Hayri'ye söyle de bi el atsın!"
+            return "❌ Ortak beyin anahtarı kasada unutulmuş, bi el atın da çalıştıralım!"
 
-        role = self.detect_user_role(user, guild)
         display_name = getattr(user, "display_name", user.name)
 
-        if role == "alperen":
+        if self.is_alperen(user):
             role_instructions = (
                 f"DİKKAT - BU SORUYU SORAN KİŞİ: ALPEREN (@1alperenn1 - {display_name}).\n"
                 "Alperen'e karşı KESİNLİKLE çok saf, aşırı aptal, kafası hiç basmayan veya Alperen'le acayip kafa bulan, onu tiye alan biri gibi davran!\n"
                 "Alperen ne sorarsa sorsun lafı alakasız saçma bir yere çek, 'He? Ne diyon Alperen anlamadım ki', 'Alperen yine boş yapmışsın git iki elini yüzünü yıka', "
                 "'Git masaları sil Alperen beynine kan gitsin', 'Alperen sen konuşunca benim devreler yanıyor' gibi aşırı komik ve aptalca cevaplar ver. Asla mantıklı cevap verme, tamamen troll ve saf ol!"
             )
-        elif role == "hayri":
-            role_instructions = (
-                f"DİKKAT - BU SORUYU SORAN KİŞİ: PATRON HAYRİ ({display_name}).\n"
-                "Hayri senin can ciğer ortağın, mekanın tek patronu ve sahibidir. Ona karşı son derece saygılı, sadık, zeki ve 'Emret patron', 'Sen nasıl dersen öyle patron', 'Patron olay aynen şöyle...' diyerek tam bir sağ kol gibi net, nokta atışı ve akıllıca cevap ver."
-            )
         else:
             role_instructions = (
-                f"Soru soran kişi masadan bir müşteri/üye: {display_name}.\n"
-                "Ona karşı samimi, görmüş geçirmiş bir kafe esnafı/ortağı gibi 'Eyvallah ortak, bak mevzu şöyle...' diye kısa, zeki ve esprili cevap ver."
+                f"Soru soran ortak: {display_name}.\n"
+                "Ona karşı eşit, samimi, babacan, esprili bir kahvehane/lounge ortağı gibi 'Eyvallah ortak, bak mevzu şöyle...', 'Dinle bak ortak...' diye kısa, zeki, dobra ve doğrudan cevap ver. Yalakalık asla yok, saf samimiyet ve racon var."
             )
 
         full_system_prompt = f"{BASE_SYSTEM_PROMPT}\n\n{role_instructions}"
@@ -116,14 +97,9 @@ class ZiyaAICog(commands.Cog, name="Ziya Ortak AI"):
         self.cooldowns[uid] = now
         await interaction.response.defer(thinking=True)
 
-        reply = await self.generate_ziya_reply(interaction.user, soru, interaction.guild)
+        reply = await self.generate_ziya_reply(interaction.user, soru)
 
-        role = self.detect_user_role(interaction.user, interaction.guild)
-        card_title = "☕ Ziya Ortak Masada"
-        if role == "alperen":
-            card_title = "🤪 Ziya Ortak (Alperen'e Özel Mod)"
-        elif role == "hayri":
-            card_title = "👑 Ziya Ortak • Patron Masası"
+        card_title = "🤪 Ziya Ortak (Alperen'e Özel Mod)" if self.is_alperen(interaction.user) else "☕ Ziya Ortak Masada"
 
         embed = discord.Embed(
             title=card_title,
@@ -154,13 +130,8 @@ class ZiyaAICog(commands.Cog, name="Ziya Ortak AI"):
 
             self.cooldowns[uid] = now
             async with message.channel.typing():
-                reply = await self.generate_ziya_reply(message.author, clean_content, message.guild)
-                role = self.detect_user_role(message.author, message.guild)
-                card_title = "☕ Ziya Ortak"
-                if role == "alperen":
-                    card_title = "🤪 Ziya Ortak (Alperen'e Özel)"
-                elif role == "hayri":
-                    card_title = "👑 Ziya Ortak • Patronun Masası"
+                reply = await self.generate_ziya_reply(message.author, clean_content)
+                card_title = "🤪 Ziya Ortak (Alperen'e Özel)" if self.is_alperen(message.author) else "☕ Ziya Ortak"
 
                 embed = discord.Embed(
                     title=card_title,
